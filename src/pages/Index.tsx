@@ -239,6 +239,14 @@ const Index = () => {
       setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, ...updates } : m)));
     };
 
+    // Always attach basic classification so hover works even if
+    // verification or persistence fail later.
+    attachMeta({
+      classification,
+      verification: null,
+      memoryScope: "none",
+    });
+
     if (
       classification.is_global_candidate &&
       classification.memory_type !== "ephemeral" &&
@@ -358,12 +366,6 @@ const Index = () => {
       console.log("Not remembrance-worthy", {
         classification,
         reason: notWorthyReason,
-      });
-
-      attachMeta({
-        classification,
-        verification: null,
-        memoryScope: "none",
       });
     }
   };
