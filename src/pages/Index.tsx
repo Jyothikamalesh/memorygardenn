@@ -99,26 +99,34 @@ const Index = () => {
   useEffect(() => {
     if (!user) return;
 
-    const initSession = async () => {
-      const { data, error } = await supabase
-        .from("sessions")
-        .insert({ user_id: user.id })
-        .select()
-        .single();
-      
+    const loadLatestSession = async () => {
+      const { data, error } = await (supabase
+        .from("sessions") as any)
+        .select("id, title")
+        .eq("user_id", user.id)
+        .order("last_active_at", { ascending: false })
+        .maybeSingle();
+
       if (error) {
-        console.error("Failed to create session", error);
+        console.error("Failed to load existing session", error);
         toast({
-          title: "Session initialization failed",
-          description: "Could not create a session for memory tracking.",
+          title: "Session load failed",
+          description: "Could not load your last conversation.",
           variant: "destructive",
         });
+        return;
+      }
+
+      if (data) {
+        setSessionId((data as any).id as string);
+        setThreadTitle(((data as any).title as string | null) ?? null);
       } else {
-        setSessionId(data.id);
+        setSessionId(null);
         setThreadTitle(null);
       }
     };
-    void initSession();
+
+    void loadLatestSession();
   }, [user]);
 
   const handleNewThread = async () => {
@@ -197,10 +205,19 @@ const Index = () => {
 
     toast({
       title: "Thread deleted",
-      description: "A new empty thread has been started.",
+      description: "The thread and its memories have been removed.",
     });
 
-    await handleNewThread();
+    setSessionId(null);
+    setThreadTitle(null);
+    setMessages([
+      {
+        id: 1,
+        role: "assistant",
+        content: "Hi! Tell me about yourself and I can remember things about you globally.",
+      },
+    ]);
+    setThreadMemories([]);
   };
 
   const handleThreadSelect = async (threadId: string) => {
