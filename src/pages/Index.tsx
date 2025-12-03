@@ -4,6 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast, toastRememberGlobally } from "@/components/ui/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { MemoryFlashcards } from "@/components/MemoryFlashcards";
 
 interface ChatMessage {
   id: number;
@@ -14,14 +15,22 @@ interface ChatMessage {
   memoryScope?: "global" | "session" | "none";
 }
 
- type MemoryType =
-  | "preference"
-  | "goal"
-  | "health"
-  | "biographical_fact"
-  | "routine"
-  | "procedural_memory"
-  | "relationship";
+  type MemoryType =
+   | "preference"
+   | "goal"
+   | "health"
+   | "biographical_fact"
+   | "routine"
+   | "procedural_memory"
+   | "relationship";
+ 
+ interface MemorySummary {
+   id: string;
+   memory_type: MemoryType;
+   short_summary: string;
+   scope: "global" | "session";
+   confidence: number | null;
+ }
 
 interface PreferenceClassification {
   memory_type: MemoryType | "ephemeral" | "irrelevant";
@@ -48,6 +57,8 @@ const Index = () => {
       content: "Hi! Tell me about yourself and I can remember things about you globally.",
     },
   ]);
+  const [threadMemories, setThreadMemories] = useState<MemorySummary[]>([]);
+  const [globalMemories, setGlobalMemories] = useState<MemorySummary[]>([]);
   const [input, setInput] = useState("");
   const [isChatting, setIsChatting] = useState(false);
   const [isClassifying, setIsClassifying] = useState(false);
@@ -67,8 +78,55 @@ const Index = () => {
         setSessionId(data.id);
       }
     };
-    initSession();
+    void initSession();
   }, []);
+
+  useEffect(() => {
+    if (!sessionId) return;
+
+    const fetchMemories = async () => {
+      const { data: global, error: globalError } = await supabase
+        .from("memories")
+        .select("id, memory_type, short_summary, scope, confidence")
+        .eq("scope", "global");
+
+      if (globalError) {
+        console.error("Failed to fetch global memories", globalError);
+      } else if (global) {
+        setGlobalMemories(
+          (global as any[]).map((memory) => ({
+            id: memory.id,
+            memory_type: memory.memory_type as MemoryType,
+            short_summary: memory.short_summary,
+            scope: memory.scope,
+            confidence: memory.confidence,
+          })),
+        );
+      }
+
+      const { data: sessionMemories, error: sessionError } = await supabase
+        .from("memories")
+        .select("id, memory_type, short_summary, scope, confidence")
+        .eq("scope", "session")
+        .eq("session_id", sessionId);
+
+      if (sessionError) {
+        console.error("Failed to fetch session memories", sessionError);
+      } else if (sessionMemories) {
+        setThreadMemories(
+          (sessionMemories as any[]).map((memory) => ({
+            id: memory.id,
+            memory_type: memory.memory_type as MemoryType,
+            short_summary: memory.short_summary,
+            scope: memory.scope,
+            confidence: memory.confidence,
+          })),
+        );
+      }
+    };
+
+    void fetchMemories();
+  }, [sessionId]);
 
   const persistMemory = async (
     classification: PreferenceClassification,
@@ -91,17 +149,21 @@ const Index = () => {
     
     const finalSummary = verification.adjusted_summary;
 
-    const { error } = await supabase.from("memories").insert({
-      session_id: sessionId,
-      memory_type: finalType,
-      scope: "global",
-      content: userMessage,
-      short_summary: finalSummary,
-      confidence: classification.confidence,
-      verified: verification.verified,
-      verification_prompt: `Type: ${classification.memory_type}, Summary: ${classification.short_summary}`,
-      verification_response: verification.verification_explanation,
-    });
+    const { data, error } = await supabase
+      .from("memories")
+      .insert({
+        session_id: sessionId,
+        memory_type: finalType,
+        scope: "global",
+        content: userMessage,
+        short_summary: finalSummary,
+        confidence: classification.confidence,
+        verified: verification.verified,
+        verification_prompt: `Type: ${classification.memory_type}, Summary: ${classification.short_summary}`,
+        verification_response: verification.verification_explanation,
+      })
+      .select()
+      .single();
 
     if (error) {
       console.error("Failed to persist memory", error);
@@ -110,7 +172,18 @@ const Index = () => {
         description: error.message,
         variant: "destructive",
       });
-    } else {
+    } else if (data) {
+      setGlobalMemories((prev) => [
+        ...prev,
+        {
+          id: data.id,
+          memory_type: data.memory_type as MemoryType,
+          short_summary: data.short_summary,
+          scope: data.scope,
+          confidence: data.confidence,
+        },
+      ]);
+
       toast({
         title: "Memory saved",
         description: `Remembered: ${finalSummary}`,
@@ -324,17 +397,21 @@ const Index = () => {
     ) {
       console.log("This is a session-specific memory, storing without verification...");
 
-      const { error } = await supabase.from("memories").insert({
-        session_id: sessionId,
-        memory_type: classification.memory_type as MemoryType,
-        scope: "session",
-        content: userText,
-        short_summary: classification.short_summary,
-        confidence: classification.confidence,
-        verified: false,
-        verification_prompt: null,
-        verification_response: null,
-      });
+      const { data, error } = await supabase
+        .from("memories")
+        .insert({
+          session_id: sessionId,
+          memory_type: classification.memory_type as MemoryType,
+          scope: "session",
+          content: userText,
+          short_summary: classification.short_summary,
+          confidence: classification.confidence,
+          verified: false,
+          verification_prompt: null,
+          verification_response: null,
+        })
+        .select()
+        .single();
 
       if (error) {
         console.error("Failed to store session memory", error);
@@ -343,12 +420,23 @@ const Index = () => {
           description: error.message,
           variant: "destructive",
         });
-      } else {
+      } else if (data) {
         attachMeta({
           classification,
           verification: null,
           memoryScope: "session",
         });
+
+        setThreadMemories((prev) => [
+          ...prev,
+          {
+            id: data.id,
+            memory_type: data.memory_type as MemoryType,
+            short_summary: data.short_summary,
+            scope: data.scope,
+            confidence: data.confidence,
+          },
+        ]);
 
         toast({
           title: "Thread memory stored",
@@ -566,6 +654,11 @@ const Index = () => {
             })}
 
           </div>
+
+          <MemoryFlashcards
+            threadMemories={threadMemories}
+            globalMemories={globalMemories}
+          />
 
           <form onSubmit={handleSubmit} className="mt-3 flex flex-col gap-2">
             <label htmlFor="chat-input" className="text-xs font-medium text-muted-foreground">
