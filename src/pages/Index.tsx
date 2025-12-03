@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast, toastRememberGlobally } from "@/hooks/use-toast";
+import { toast as sonnerToast } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -788,20 +789,15 @@ const Index = () => {
             ? `Conflicts: ${verification.conflicts_detected.join(", ")}`
             : "";
 
-        toast({
-          title: "Global memory saved",
-          description:
-            `[${classification.memory_type}] ${verification.adjusted_summary}` +
-            (conflictWarning ? ` — ${conflictWarning}` : ""),
-          action: (
-            <button
-              onClick={() => setMemoriesDialogOpen(true)}
-              className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
-            >
-              View & edit memories
-            </button>
-          ),
-        });
+      sonnerToast("Saving as global memory", {
+        description:
+          `[${classification.memory_type}] ${verification.adjusted_summary}` +
+          (conflictWarning ? ` — ${conflictWarning}` : ""),
+        action: {
+          label: "Edit or delete",
+          onClick: () => setMemoriesDialogOpen(true),
+        },
+      });
       } else {
         // Verifier skipped or failed: still store as a global memory based on the raw classification
         if (!sessionId || !user) {
@@ -855,17 +851,12 @@ const Index = () => {
             },
           ]);
 
-          toast({
-            title: "Global memory saved",
+          sonnerToast("Saving as global memory", {
             description: `Remembered: ${classification.short_summary}`,
-            action: (
-              <button
-                onClick={() => setMemoriesDialogOpen(true)}
-                className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
-              >
-                View & edit memories
-              </button>
-            ),
+            action: {
+              label: "Edit or delete",
+              onClick: () => setMemoriesDialogOpen(true),
+            },
           });
         }
       }
