@@ -108,7 +108,7 @@ export default function Auth() {
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-md space-y-8">
         <div className="text-center">
-          <h1 className="text-3xl font-bold">Memory Chat</h1>
+          <h1 className="text-3xl font-bold">Memory Garden</h1>
           <p className="text-muted-foreground mt-2">
             {isLogin ? "Welcome back" : "Create your account"}
           </p>
