@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { MessageSquare } from "lucide-react";
+import { MessageSquare, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import {
@@ -14,6 +14,7 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
 
 interface Thread {
   id: string;
@@ -26,9 +27,10 @@ interface ThreadSidebarProps {
   user: User | null;
   currentThreadId: string | null;
   onThreadSelect: (threadId: string) => void;
+  onThreadDelete?: (threadId: string) => void;
 }
 
-export function ThreadSidebar({ user, currentThreadId, onThreadSelect }: ThreadSidebarProps) {
+export function ThreadSidebar({ user, currentThreadId, onThreadSelect, onThreadDelete }: ThreadSidebarProps) {
   const { open } = useSidebar();
   const [threads, setThreads] = useState<Thread[]>([]);
 
@@ -85,13 +87,29 @@ export function ThreadSidebar({ user, currentThreadId, onThreadSelect }: ThreadS
                   >
                     <MessageSquare className="h-4 w-4" />
                     {open && (
-                      <div className="flex flex-col items-start flex-1 min-w-0">
-                        <span className="text-sm truncate w-full">
-                          {thread.title ? thread.title : `Thread ${thread.id.slice(0, 8)}`}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {formatDate(thread.last_active_at)}
-                        </span>
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <div className="flex flex-col items-start flex-1 min-w-0">
+                          <span className="text-sm truncate w-full">
+                            {thread.title ? thread.title : `Thread ${thread.id.slice(0, 8)}`}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {formatDate(thread.last_active_at)}
+                          </span>
+                        </div>
+                        {onThreadDelete && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onThreadDelete(thread.id);
+                            }}
+                            aria-label="Delete thread"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        )}
                       </div>
                     )}
                   </SidebarMenuButton>

@@ -162,19 +162,13 @@ const Index = () => {
     }
   };
 
-  const handleDeleteCurrentThread = async () => {
-    if (!user || !sessionId) return;
-
-    const confirmed = window.confirm(
-      "Delete this thread and all of its memories? This action cannot be undone.",
-    );
-
-    if (!confirmed) return;
+  const deleteThreadById = async (threadId: string) => {
+    if (!user) return;
 
     const { error: memoriesError } = await supabase
       .from("memories")
       .delete()
-      .eq("session_id", sessionId)
+      .eq("session_id", threadId)
       .eq("user_id", user.id);
 
     if (memoriesError) {
@@ -190,7 +184,7 @@ const Index = () => {
     const { error: sessionError } = await supabase
       .from("sessions")
       .delete()
-      .eq("id", sessionId)
+      .eq("id", threadId)
       .eq("user_id", user.id);
 
     if (sessionError) {
@@ -208,18 +202,28 @@ const Index = () => {
       description: "The thread and its memories have been removed.",
     });
 
-    setSessionId(null);
-    setThreadTitle(null);
-    setMessages([
-      {
-        id: 1,
-        role: "assistant",
-        content: "Hi! Tell me about yourself and I can remember things about you globally.",
-      },
-    ]);
-    setThreadMemories([]);
+    if (threadId === sessionId) {
+      setSessionId(null);
+      setThreadTitle(null);
+      setMessages([
+        {
+          id: 1,
+          role: "assistant",
+          content: "Hi! Tell me about yourself and I can remember things about you globally.",
+        },
+      ]);
+      setThreadMemories([]);
+    }
   };
 
+  const handleDeleteCurrentThread = async () => {
+    if (!sessionId) return;
+    await deleteThreadById(sessionId);
+  };
+
+  const handleThreadDelete = async (threadId: string) => {
+    await deleteThreadById(threadId);
+  };
   const handleThreadSelect = async (threadId: string) => {
     if (threadId === sessionId) return;
     
@@ -1145,6 +1149,7 @@ const Index = () => {
           user={user}
           currentThreadId={sessionId}
           onThreadSelect={handleThreadSelect}
+          onThreadDelete={handleThreadDelete}
         />
         
         <div className="flex flex-1 flex-col">
