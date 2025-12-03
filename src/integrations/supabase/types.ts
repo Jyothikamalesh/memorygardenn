@@ -27,6 +27,7 @@ export type Database = {
           short_summary: string
           superseded_by: string | null
           updated_at: string
+          user_id: string | null
           verification_prompt: string | null
           verification_response: string | null
           verified: boolean
@@ -43,6 +44,7 @@ export type Database = {
           short_summary: string
           superseded_by?: string | null
           updated_at?: string
+          user_id?: string | null
           verification_prompt?: string | null
           verification_response?: string | null
           verified?: boolean
@@ -59,6 +61,7 @@ export type Database = {
           short_summary?: string
           superseded_by?: string | null
           updated_at?: string
+          user_id?: string | null
           verification_prompt?: string | null
           verification_response?: string | null
           verified?: boolean
@@ -133,16 +136,19 @@ export type Database = {
           created_at: string
           id: string
           last_active_at: string
+          user_id: string | null
         }
         Insert: {
           created_at?: string
           id?: string
           last_active_at?: string
+          user_id?: string | null
         }
         Update: {
           created_at?: string
           id?: string
           last_active_at?: string
+          user_id?: string | null
         }
         Relationships: []
       }

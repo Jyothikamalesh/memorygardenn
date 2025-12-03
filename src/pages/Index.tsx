@@ -1,8 +1,10 @@
 import { FormEvent, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast, toastRememberGlobally } from "@/components/ui/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import type { User } from "@supabase/supabase-js";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { MemoryFlashcards } from "@/components/MemoryFlashcards";
 
@@ -49,6 +51,8 @@ interface VerificationResult {
 }
 
 const Index = () => {
+  const navigate = useNavigate();
+  const [user, setUser] = useState<User | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -66,8 +70,37 @@ const Index = () => {
   const [showMemories, setShowMemories] = useState(false);
 
   useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        navigate("/auth");
+        return;
+      }
+      setUser(session.user);
+    };
+    checkAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!session) {
+        navigate("/auth");
+      } else {
+        setUser(session.user);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  useEffect(() => {
+    if (!user) return;
+
     const initSession = async () => {
-      const { data, error } = await supabase.from("sessions").insert({}).select().single();
+      const { data, error } = await supabase
+        .from("sessions")
+        .insert({ user_id: user.id })
+        .select()
+        .single();
+      
       if (error) {
         console.error("Failed to create session", error);
         toast({
@@ -80,16 +113,17 @@ const Index = () => {
       }
     };
     void initSession();
-  }, []);
+  }, [user]);
 
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId || !user) return;
 
     const fetchMemories = async () => {
       const { data: global, error: globalError } = await supabase
         .from("memories")
         .select("id, memory_type, short_summary, scope, confidence")
-        .eq("scope", "global");
+        .eq("scope", "global")
+        .eq("user_id", user.id);
 
       if (globalError) {
         console.error("Failed to fetch global memories", globalError);
@@ -109,7 +143,8 @@ const Index = () => {
         .from("memories")
         .select("id, memory_type, short_summary, scope, confidence")
         .eq("scope", "session")
-        .eq("session_id", sessionId);
+        .eq("session_id", sessionId)
+        .eq("user_id", user.id);
 
       if (sessionError) {
         console.error("Failed to fetch session memories", sessionError);
@@ -127,17 +162,17 @@ const Index = () => {
     };
 
     void fetchMemories();
-  }, [sessionId]);
+  }, [sessionId, user]);
 
   const persistMemory = async (
     classification: PreferenceClassification,
     verification: VerificationResult,
     userMessage: string
   ) => {
-    if (!sessionId) {
+    if (!sessionId || !user) {
       toast({
         title: "Cannot save memory",
-        description: "No active session",
+        description: "No active session or user",
         variant: "destructive",
       });
       return;
@@ -154,6 +189,7 @@ const Index = () => {
       .from("memories")
       .insert({
         session_id: sessionId,
+        user_id: user.id,
         memory_type: finalType,
         scope: "global",
         content: userMessage,
@@ -336,7 +372,8 @@ const Index = () => {
       const { data: existingMemories, error: fetchError } = await supabase
         .from("memories")
         .select("memory_type, short_summary")
-        .eq("scope", "global");
+        .eq("scope", "global")
+        .eq("user_id", user?.id);
 
       if (fetchError) {
         console.error("Failed to fetch existing memories", fetchError);
@@ -388,10 +425,10 @@ const Index = () => {
               </button>
               <button
                 onClick={async () => {
-                  if (!sessionId) {
+                  if (!sessionId || !user) {
                     toast({
                       title: "Cannot save memory",
-                      description: "No active session",
+                      description: "No active session or user",
                       variant: "destructive",
                     });
                     return;
@@ -401,6 +438,7 @@ const Index = () => {
                     .from("memories")
                     .insert({
                       session_id: sessionId,
+                      user_id: user.id,
                       memory_type: classification.memory_type as MemoryType,
                       scope: "session",
                       content: userText,
@@ -477,10 +515,10 @@ const Index = () => {
             <div className="flex gap-2">
               <button
                 onClick={async () => {
-                  if (!sessionId) {
+                  if (!sessionId || !user) {
                     toast({
                       title: "Cannot save memory",
-                      description: "No active session",
+                      description: "No active session or user",
                       variant: "destructive",
                     });
                     return;
@@ -490,6 +528,7 @@ const Index = () => {
                     .from("memories")
                     .insert({
                       session_id: sessionId,
+                      user_id: user.id,
                       memory_type: classification.memory_type as MemoryType,
                       scope: "global",
                       content: userText,
@@ -539,10 +578,10 @@ const Index = () => {
               </button>
               <button
                 onClick={async () => {
-                  if (!sessionId) {
+                  if (!sessionId || !user) {
                     toast({
                       title: "Cannot save memory",
-                      description: "No active session",
+                      description: "No active session or user",
                       variant: "destructive",
                     });
                     return;
@@ -552,6 +591,7 @@ const Index = () => {
                     .from("memories")
                     .insert({
                       session_id: sessionId,
+                      user_id: user.id,
                       memory_type: classification.memory_type as MemoryType,
                       scope: "session",
                       content: userText,
@@ -625,6 +665,7 @@ const Index = () => {
         .from("memories")
         .insert({
           session_id: sessionId,
+          user_id: user?.id,
           memory_type: classification.memory_type as MemoryType,
           scope: "session",
           content: userText,
@@ -794,14 +835,27 @@ const Index = () => {
               </p>
             </div>
             <div className="flex flex-col items-end gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setShowMemories((prev) => !prev)}
-              >
-                {showMemories ? "Hide memories" : "Show memories"}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setShowMemories((prev) => !prev)}
+                >
+                  {showMemories ? "Hide memories" : "Show memories"}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    await supabase.auth.signOut();
+                    navigate("/auth");
+                  }}
+                >
+                  Logout
+                </Button>
+              </div>
               {(isClassifying || isVerifying) && (
                 <span className="text-[11px] text-muted-foreground">
                   {isClassifying && "Classifying…"}
