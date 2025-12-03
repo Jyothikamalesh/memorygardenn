@@ -14,7 +14,138 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      memories: {
+        Row: {
+          confidence: number | null
+          content: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          memory_type: Database["public"]["Enums"]["memory_type"]
+          scope: Database["public"]["Enums"]["memory_scope"]
+          session_id: string | null
+          short_summary: string
+          superseded_by: string | null
+          updated_at: string
+          verification_prompt: string | null
+          verification_response: string | null
+          verified: boolean
+        }
+        Insert: {
+          confidence?: number | null
+          content: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          memory_type: Database["public"]["Enums"]["memory_type"]
+          scope?: Database["public"]["Enums"]["memory_scope"]
+          session_id?: string | null
+          short_summary: string
+          superseded_by?: string | null
+          updated_at?: string
+          verification_prompt?: string | null
+          verification_response?: string | null
+          verified?: boolean
+        }
+        Update: {
+          confidence?: number | null
+          content?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          memory_type?: Database["public"]["Enums"]["memory_type"]
+          scope?: Database["public"]["Enums"]["memory_scope"]
+          session_id?: string | null
+          short_summary?: string
+          superseded_by?: string | null
+          updated_at?: string
+          verification_prompt?: string | null
+          verification_response?: string | null
+          verified?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "memories_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "memories_superseded_by_fkey"
+            columns: ["superseded_by"]
+            isOneToOne: false
+            referencedRelation: "memories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      memory_conflicts: {
+        Row: {
+          conflict_type: string
+          created_at: string
+          id: string
+          memory_a_id: string
+          memory_b_id: string
+          resolution_strategy: string | null
+          resolved: boolean
+          resolved_at: string | null
+        }
+        Insert: {
+          conflict_type: string
+          created_at?: string
+          id?: string
+          memory_a_id: string
+          memory_b_id: string
+          resolution_strategy?: string | null
+          resolved?: boolean
+          resolved_at?: string | null
+        }
+        Update: {
+          conflict_type?: string
+          created_at?: string
+          id?: string
+          memory_a_id?: string
+          memory_b_id?: string
+          resolution_strategy?: string | null
+          resolved?: boolean
+          resolved_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "memory_conflicts_memory_a_id_fkey"
+            columns: ["memory_a_id"]
+            isOneToOne: false
+            referencedRelation: "memories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "memory_conflicts_memory_b_id_fkey"
+            columns: ["memory_b_id"]
+            isOneToOne: false
+            referencedRelation: "memories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sessions: {
+        Row: {
+          created_at: string
+          id: string
+          last_active_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_active_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_active_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +154,15 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      memory_scope: "global" | "session"
+      memory_type:
+        | "preference"
+        | "goal"
+        | "health"
+        | "biographical_fact"
+        | "routine"
+        | "procedural_memory"
+        | "relationship"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +289,17 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      memory_scope: ["global", "session"],
+      memory_type: [
+        "preference",
+        "goal",
+        "health",
+        "biographical_fact",
+        "routine",
+        "procedural_memory",
+        "relationship",
+      ],
+    },
   },
 } as const
