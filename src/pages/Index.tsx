@@ -793,6 +793,14 @@ const Index = () => {
           description:
             `[${classification.memory_type}] ${verification.adjusted_summary}` +
             (conflictWarning ? ` — ${conflictWarning}` : ""),
+          action: (
+            <button
+              onClick={() => setMemoriesDialogOpen(true)}
+              className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
+            >
+              View & edit memories
+            </button>
+          ),
         });
       } else {
         // Verifier skipped or failed: still store as a global memory based on the raw classification
@@ -850,6 +858,14 @@ const Index = () => {
           toast({
             title: "Global memory saved",
             description: `Remembered: ${classification.short_summary}`,
+            action: (
+              <button
+                onClick={() => setMemoriesDialogOpen(true)}
+                className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
+              >
+                View & edit memories
+              </button>
+            ),
           });
         }
       }
