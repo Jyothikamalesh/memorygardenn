@@ -3,14 +3,25 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast, toastRememberGlobally } from "@/components/ui/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface ChatMessage {
   id: number;
   role: "user" | "assistant";
   content: string;
+  classification?: PreferenceClassification;
+  verification?: VerificationResult | null;
+  memoryScope?: "global" | "session" | "none";
 }
 
-type MemoryType = "preference" | "goal" | "health" | "biographical_fact" | "routine" | "procedural_memory" | "relationship";
+ type MemoryType =
+  | "preference"
+  | "goal"
+  | "health"
+  | "biographical_fact"
+  | "routine"
+  | "procedural_memory"
+  | "relationship";
 
 interface PreferenceClassification {
   memory_type: MemoryType | "ephemeral" | "irrelevant";
@@ -38,6 +49,7 @@ const Index = () => {
     },
   ]);
   const [input, setInput] = useState("");
+  const [isChatting, setIsChatting] = useState(false);
   const [isClassifying, setIsClassifying] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
 
@@ -212,32 +224,28 @@ const Index = () => {
     }
   };
 
-  const handleSubmit = async (event: FormEvent) => {
-    event.preventDefault();
-    const trimmed = input.trim();
-    if (!trimmed || isClassifying || isVerifying || !sessionId) return;
-
-    const nextId = messages.length ? messages[messages.length - 1]!.id + 1 : 1;
-
-    const userMessage: ChatMessage = {
-      id: nextId,
-      role: "user",
-      content: trimmed,
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
-    setInput("");
-
-    const classification = await classifyPreference(trimmed);
+  const runClassificationFlow = async (userText: string, messageId: number) => {
+    const classification = await classifyPreference(userText);
 
     if (!classification) return;
 
     console.log("Classification result:", classification);
 
-    if (classification.is_global_candidate && classification.memory_type !== "ephemeral" && classification.memory_type !== "irrelevant") {
+    const attachMeta = (updates: {
+      classification?: PreferenceClassification;
+      verification?: VerificationResult | null;
+      memoryScope?: "global" | "session" | "none";
+    }) => {
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, ...updates } : m)));
+    };
+
+    if (
+      classification.is_global_candidate &&
+      classification.memory_type !== "ephemeral" &&
+      classification.memory_type !== "irrelevant"
+    ) {
       console.log("This is a global candidate, fetching existing memories...");
-      
-      // Fetch existing global memories for conflict detection
+
       const { data: existingMemories, error: fetchError } = await supabase
         .from("memories")
         .select("memory_type, short_summary")
@@ -247,7 +255,11 @@ const Index = () => {
         console.error("Failed to fetch existing memories", fetchError);
       }
 
-      const existing = (existingMemories ?? []) as Array<{ memory_type: MemoryType; short_summary: string }>;
+      const existing = (existingMemories ?? []) as Array<{
+        memory_type: MemoryType;
+        short_summary: string;
+      }>;
+
       console.log("Existing memories:", existing);
       console.log("About to call verifyMemory with:", { classification, existing });
 
@@ -260,16 +272,23 @@ const Index = () => {
             ? `⚠️ Conflicts: ${verification.conflicts_detected.join(", ")}`
             : "";
 
-        // Show notification with approve/reject buttons in top-right
+        attachMeta({
+          classification,
+          verification,
+          memoryScope: "global",
+        });
+
         toastRememberGlobally({
           title: "Remember this globally?",
-          description: `[${classification.memory_type}] ${verification.adjusted_summary}${conflictWarning ? ` — ${conflictWarning}` : ""}`,
+          description: `[${classification.memory_type}] ${verification.adjusted_summary}${
+            conflictWarning ? ` — ${conflictWarning}` : ""
+          }`,
           duration: 15000,
           action: (
             <div className="flex gap-2">
               <button
                 onClick={() => {
-                  persistMemory(classification, verification, trimmed);
+                  persistMemory(classification, verification, userText);
                 }}
                 className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
               >
@@ -289,26 +308,19 @@ const Index = () => {
             </div>
           ),
         });
-
-        // Show brief assistant response without the approval question
-        const assistantMessage: ChatMessage = {
-          id: nextId + 1,
-          role: "assistant",
-          content: `Classified as **${classification.memory_type}** (confidence: ${classification.confidence.toFixed(2)})
-Verification: ${verification.verification_explanation}${conflictWarning ? `\n${conflictWarning}` : ""}`,
-        };
-
-        setMessages((prev) => [...prev, assistantMessage]);
       }
-    } else if (!classification.is_global_candidate && classification.memory_type !== "ephemeral" && classification.memory_type !== "irrelevant") {
-      // Session-specific memory (like procedural memory for this thread)
+    } else if (
+      !classification.is_global_candidate &&
+      classification.memory_type !== "ephemeral" &&
+      classification.memory_type !== "irrelevant"
+    ) {
       console.log("This is a session-specific memory, storing without verification...");
-      
+
       const { error } = await supabase.from("memories").insert({
         session_id: sessionId,
         memory_type: classification.memory_type as MemoryType,
         scope: "session",
-        content: trimmed,
+        content: userText,
         short_summary: classification.short_summary,
         confidence: classification.confidence,
         verified: false,
@@ -324,48 +336,110 @@ Verification: ${verification.verification_explanation}${conflictWarning ? `\n${c
           variant: "destructive",
         });
       } else {
-        const assistantMessage: ChatMessage = {
-          id: nextId + 1,
-          role: "assistant",
-          content: `📌 Stored as thread-specific **${classification.memory_type}** (confidence: ${classification.confidence.toFixed(2)})
+        attachMeta({
+          classification,
+          verification: null,
+          memoryScope: "session",
+        });
 
-Summary: "${classification.short_summary}"
-Reason: ${classification.reason}
-
-This is stored for this conversation only (not global).`,
-        };
-
-        setMessages((prev) => [...prev, assistantMessage]);
-        
         toast({
           title: "Thread memory stored",
           description: `[${classification.memory_type}] ${classification.short_summary}`,
         });
       }
     } else {
-      // Not a global candidate - show why it's not remembrance-worthy
-      const notWorthyReason = 
-        classification.memory_type === "ephemeral" 
+      const notWorthyReason =
+        classification.memory_type === "ephemeral"
           ? "This is temporary information that doesn't need long-term storage."
           : classification.memory_type === "irrelevant"
           ? "This doesn't contain information worth remembering."
           : "This is session-only information, not a global candidate.";
 
+      console.log("Not remembrance-worthy", {
+        classification,
+        reason: notWorthyReason,
+      });
+
+      attachMeta({
+        classification,
+        verification: null,
+        memoryScope: "none",
+      });
+    }
+  };
+
+  const askAssistant = async (
+    conversation: { role: "user" | "assistant"; content: string }[],
+    assistantId: number,
+  ) => {
+    try {
+      setIsChatting(true);
+
+      const { data, error } = await supabase.functions.invoke<{
+        content?: string;
+        error?: string;
+        code?: number;
+      }>("chat", {
+        body: { messages: conversation },
+      });
+
+      if (error || !data || !data.content) {
+        const message =
+          (data && data.error) ||
+          ((error as any)?.message as string) ||
+          "Failed to get AI response.";
+
+        toast({
+          title: "Assistant error",
+          description: message,
+          variant: "destructive",
+        });
+        return;
+      }
+
       const assistantMessage: ChatMessage = {
-        id: nextId + 1,
+        id: assistantId,
         role: "assistant",
-        content: `✗ Not remembrance-worthy
-
-Type: ${classification.memory_type}
-Confidence: ${classification.confidence.toFixed(2)}
-Summary: "${classification.short_summary}"
-Reason: ${classification.reason}
-
-${notWorthyReason}`,
+        content: data.content,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+    } catch (error) {
+      console.error("chat function exception", error);
+      toast({
+        title: "Assistant error",
+        description: "Something went wrong while talking to the AI assistant.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsChatting(false);
     }
+  };
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    const trimmed = input.trim();
+    if (!trimmed || isChatting || !sessionId) return;
+
+    const nextId = messages.length ? messages[messages.length - 1]!.id + 1 : 1;
+
+    const userMessage: ChatMessage = {
+      id: nextId,
+      role: "user",
+      content: trimmed,
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+
+    void runClassificationFlow(trimmed, nextId);
+
+    const conversation = [...messages, userMessage].map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
+
+    await askAssistant(conversation, nextId + 1);
   };
 
   return (
@@ -425,6 +499,55 @@ ${notWorthyReason}`,
                   >
                     {message.role === "assistant" ? "Assistant" : "You"}
                   </span>
+
+                  {message.role === "user" && message.classification && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="rounded-full border border-border/60 px-2 py-0.5 text-[9px] lowercase text-muted-foreground">
+                          {message.memoryScope === "global"
+                            ? `global · ${message.classification.memory_type}`
+                            : message.memoryScope === "session"
+                            ? `session · ${message.classification.memory_type}`
+                            : message.classification.memory_type}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" align="start" className="max-w-xs text-left">
+                        <p className="mb-1 text-[11px] font-semibold">Memory classification</p>
+                        <p className="text-[11px]">
+                          <span className="font-medium">Type:</span> {message.classification.memory_type}
+                        </p>
+                        {message.memoryScope && (
+                          <p className="text-[11px]">
+                            <span className="font-medium">Scope:</span> {message.memoryScope}
+                          </p>
+                        )}
+                        <p className="mt-1 text-[11px]">
+                          <span className="font-medium">Summary:</span> {message.classification.short_summary}
+                        </p>
+                        <p className="text-[11px]">
+                          <span className="font-medium">Confidence:</span>{" "}
+                          {message.classification.confidence.toFixed(2)}
+                        </p>
+                        <p className="mt-1 text-[11px]">
+                          <span className="font-medium">Reason:</span> {message.classification.reason}
+                        </p>
+                        {message.verification && (
+                          <>
+                            <p className="mt-1 text-[11px]">
+                              <span className="font-medium">Verification:</span>{" "}
+                              {message.verification.verification_explanation}
+                            </p>
+                            {message.verification.conflicts_detected.length > 0 && (
+                              <p className="text-[11px]">
+                                <span className="font-medium">Conflicts:</span>{" "}
+                                {message.verification.conflicts_detected.join(", ")}
+                              </p>
+                            )}
+                          </>
+                        )}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
                 </div>
                 <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
               </article>
@@ -444,11 +567,11 @@ ${notWorthyReason}`,
             />
             <div className="flex items-center justify-between gap-3">
               <p className="text-[11px] text-muted-foreground">
-                Classification → Verification → Conflict detection. Session-based temporal graph for memory management.
-              </p>
-              <Button type="submit" size="sm" disabled={!input.trim() || isClassifying || isVerifying || !sessionId}>
-                {isClassifying ? "Classifying…" : isVerifying ? "Verifying…" : "Send"}
-              </Button>
+                 Classification → Verification → Conflict detection runs in the background. Hover your messages to see memory details.
+               </p>
+               <Button type="submit" size="sm" disabled={!input.trim() || isChatting || !sessionId}>
+                 {isChatting ? "Sending…" : "Send"}
+               </Button>
             </div>
           </form>
         </section>
