@@ -300,6 +300,48 @@ Verification: ${verification.verification_explanation}${conflictWarning ? `\n${c
 
         setMessages((prev) => [...prev, assistantMessage]);
       }
+    } else if (!classification.is_global_candidate && classification.memory_type !== "ephemeral" && classification.memory_type !== "irrelevant") {
+      // Session-specific memory (like procedural memory for this thread)
+      console.log("This is a session-specific memory, storing without verification...");
+      
+      const { error } = await supabase.from("memories").insert({
+        session_id: sessionId,
+        memory_type: classification.memory_type as MemoryType,
+        scope: "session",
+        content: trimmed,
+        short_summary: classification.short_summary,
+        confidence: classification.confidence,
+        verified: false,
+        verification_prompt: null,
+        verification_response: null,
+      });
+
+      if (error) {
+        console.error("Failed to store session memory", error);
+        toast({
+          title: "Failed to store session memory",
+          description: error.message,
+          variant: "destructive",
+        });
+      } else {
+        const assistantMessage: ChatMessage = {
+          id: nextId + 1,
+          role: "assistant",
+          content: `📌 Stored as thread-specific **${classification.memory_type}** (confidence: ${classification.confidence.toFixed(2)})
+
+Summary: "${classification.short_summary}"
+Reason: ${classification.reason}
+
+This is stored for this conversation only (not global).`,
+        };
+
+        setMessages((prev) => [...prev, assistantMessage]);
+        
+        toast({
+          title: "Thread memory stored",
+          description: `[${classification.memory_type}] ${classification.short_summary}`,
+        });
+      }
     } else {
       // Not a global candidate - show why it's not remembrance-worthy
       const notWorthyReason = 
