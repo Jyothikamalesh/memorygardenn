@@ -8,7 +8,7 @@ import type { User } from "@supabase/supabase-js";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { MemoryFlashcards } from "@/components/MemoryFlashcards";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Database, LogOut } from "lucide-react";
+import { Plus, Database, LogOut, Trash2 } from "lucide-react";
 import { ThreadSidebar } from "@/components/ThreadSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 
@@ -58,6 +58,7 @@ const Index = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [threadTitle, setThreadTitle] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 1,
@@ -114,6 +115,7 @@ const Index = () => {
         });
       } else {
         setSessionId(data.id);
+        setThreadTitle(null);
       }
     };
     void initSession();
@@ -136,6 +138,7 @@ const Index = () => {
       });
     } else {
       setSessionId(data.id);
+      setThreadTitle(null);
       setMessages([
         {
           id: 1,
@@ -149,6 +152,55 @@ const Index = () => {
         description: "Starting fresh conversation",
       });
     }
+  };
+
+  const handleDeleteCurrentThread = async () => {
+    if (!user || !sessionId) return;
+
+    const confirmed = window.confirm(
+      "Delete this thread and all of its memories? This action cannot be undone.",
+    );
+
+    if (!confirmed) return;
+
+    const { error: memoriesError } = await supabase
+      .from("memories")
+      .delete()
+      .eq("session_id", sessionId)
+      .eq("user_id", user.id);
+
+    if (memoriesError) {
+      console.error("Failed to delete thread memories", memoriesError);
+      toast({
+        title: "Failed to delete thread",
+        description: memoriesError.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const { error: sessionError } = await supabase
+      .from("sessions")
+      .delete()
+      .eq("id", sessionId)
+      .eq("user_id", user.id);
+
+    if (sessionError) {
+      console.error("Failed to delete thread", sessionError);
+      toast({
+        title: "Failed to delete thread",
+        description: sessionError.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    toast({
+      title: "Thread deleted",
+      description: "A new empty thread has been started.",
+    });
+
+    await handleNewThread();
   };
 
   const handleThreadSelect = async (threadId: string) => {
@@ -165,6 +217,19 @@ const Index = () => {
     
     // Fetch memories for selected thread
     if (user) {
+      const { data: sessionRow } = await (supabase
+        .from("sessions") as any)
+        .select("title")
+        .eq("id", threadId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (sessionRow && (sessionRow as any).title) {
+        setThreadTitle((sessionRow as any).title as string);
+      } else {
+        setThreadTitle(null);
+      }
+
       const { data: sessionMem } = await supabase
         .from("memories")
         .select("*")
@@ -181,7 +246,7 @@ const Index = () => {
             short_summary: m.short_summary,
             scope: m.scope,
             confidence: m.confidence || 0,
-          }))
+          })),
         );
       }
     }
@@ -303,6 +368,170 @@ const Index = () => {
         description: `Remembered: ${finalSummary}`,
       });
     }
+  };
+
+  const handleDeleteMemory = async (
+    id: string,
+    scope: "global" | "session",
+  ) => {
+    if (!user) {
+      toast({
+        title: "Cannot modify memories",
+        description: "You must be logged in to update memories.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const { error } = await supabase
+      .from("memories")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("Failed to delete memory", error);
+      toast({
+        title: "Failed to delete memory",
+        description: error.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (scope === "global") {
+      setGlobalMemories((prev) => prev.filter((m) => m.id !== id));
+    } else {
+      setThreadMemories((prev) => prev.filter((m) => m.id !== id));
+    }
+
+    toast({
+      title: "Memory deleted",
+      description: "The memory has been removed.",
+    });
+  };
+
+  const handleEditMemory = async (
+    id: string,
+    scope: "global" | "session",
+    shortSummary: string,
+  ) => {
+    if (!user) {
+      toast({
+        title: "Cannot modify memories",
+        description: "You must be logged in to update memories.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const trimmed = shortSummary.trim();
+    if (!trimmed) {
+      toast({
+        title: "Summary is required",
+        description: "Please provide a short summary for the memory.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const { error } = await supabase
+      .from("memories")
+      .update({ short_summary: trimmed })
+      .eq("id", id)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("Failed to update memory", error);
+      toast({
+        title: "Failed to update memory",
+        description: error.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (scope === "global") {
+      setGlobalMemories((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, short_summary: trimmed } : m)),
+      );
+    } else {
+      setThreadMemories((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, short_summary: trimmed } : m)),
+      );
+    }
+
+    toast({
+      title: "Memory updated",
+      description: "The memory summary has been updated.",
+    });
+  };
+
+  const handleAddMemory = async (scope: "global" | "session", shortSummary: string) => {
+    if (!user || !sessionId) {
+      toast({
+        title: "Cannot add memory",
+        description: "No active session or user.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const trimmed = shortSummary.trim();
+    if (!trimmed) {
+      toast({
+        title: "Summary is required",
+        description: "Please provide a short summary for the memory.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("memories")
+      .insert({
+        session_id: sessionId,
+        user_id: user.id,
+        memory_type: "preference" as MemoryType,
+        scope,
+        content: trimmed,
+        short_summary: trimmed,
+        confidence: null,
+        verified: false,
+        verification_prompt: null,
+        verification_response: null,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Failed to add memory", error);
+      toast({
+        title: "Failed to add memory",
+        description: error.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const newMemory: MemorySummary = {
+      id: data.id,
+      memory_type: data.memory_type as MemoryType,
+      short_summary: data.short_summary,
+      scope: data.scope,
+      confidence: data.confidence,
+    };
+
+    if (scope === "global") {
+      setGlobalMemories((prev) => [...prev, newMemory]);
+    } else {
+      setThreadMemories((prev) => [...prev, newMemory]);
+    }
+
+    toast({
+      title: "Memory added",
+      description: "The memory has been created.",
+    });
   };
 
   const classifyPreference = async (text: string): Promise<PreferenceClassification | null> => {
@@ -857,6 +1086,8 @@ const Index = () => {
     const trimmed = input.trim();
     if (!trimmed || isChatting || !sessionId) return;
 
+    const isFirstUserMessage = !messages.some((m) => m.role === "user");
+
     const nextId = messages.length ? messages[messages.length - 1]!.id + 1 : 1;
 
     const userMessage: ChatMessage = {
@@ -867,6 +1098,18 @@ const Index = () => {
 
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
+
+    if (isFirstUserMessage && user && sessionId) {
+      setThreadTitle(trimmed);
+      try {
+        await (supabase.from("sessions") as any)
+          .update({ title: trimmed })
+          .eq("id", sessionId)
+          .eq("user_id", user.id);
+      } catch (error) {
+        console.error("Failed to update thread title", error);
+      }
+    }
 
     void runClassificationFlow(trimmed, nextId);
 
@@ -894,7 +1137,7 @@ const Index = () => {
                 <h1 className="text-xl font-semibold">Memory Chat</h1>
                 {sessionId && (
                   <p className="text-xs text-muted-foreground">
-                    Thread: {sessionId.slice(0, 8)}
+                    Thread: {threadTitle ? threadTitle : sessionId.slice(0, 8)}
                   </p>
                 )}
               </div>
@@ -908,6 +1151,15 @@ const Index = () => {
                 >
                   <Plus className="h-4 w-4 mr-2" />
                   New Thread
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDeleteCurrentThread}
+                  disabled={!user || !sessionId}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Thread
                 </Button>
                 
                 <Dialog open={memoriesDialogOpen} onOpenChange={setMemoriesDialogOpen}>
@@ -924,6 +1176,9 @@ const Index = () => {
                     <MemoryFlashcards
                       threadMemories={threadMemories}
                       globalMemories={globalMemories}
+                      onDeleteMemory={handleDeleteMemory}
+                      onEditMemory={handleEditMemory}
+                      onAddMemory={handleAddMemory}
                     />
                   </DialogContent>
                 </Dialog>

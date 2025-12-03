@@ -19,6 +19,7 @@ interface Thread {
   id: string;
   created_at: string;
   last_active_at: string;
+  title?: string | null;
 }
 
 interface ThreadSidebarProps {
@@ -35,9 +36,9 @@ export function ThreadSidebar({ user, currentThreadId, onThreadSelect }: ThreadS
     if (!user) return;
 
     const fetchThreads = async () => {
-      const { data, error } = await supabase
-        .from("sessions")
-        .select("id, created_at, last_active_at")
+      const { data, error } = await (supabase
+        .from("sessions") as any)
+        .select("id, created_at, last_active_at, title")
         .eq("user_id", user.id)
         .order("last_active_at", { ascending: false });
 
@@ -86,7 +87,7 @@ export function ThreadSidebar({ user, currentThreadId, onThreadSelect }: ThreadS
                     {open && (
                       <div className="flex flex-col items-start flex-1 min-w-0">
                         <span className="text-sm truncate w-full">
-                          Thread {thread.id.slice(0, 8)}
+                          {thread.title ? thread.title : `Thread ${thread.id.slice(0, 8)}`}
                         </span>
                         <span className="text-xs text-muted-foreground">
                           {formatDate(thread.last_active_at)}

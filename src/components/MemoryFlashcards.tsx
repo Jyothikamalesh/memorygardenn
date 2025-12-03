@@ -1,4 +1,7 @@
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 
 interface MemorySummary {
   id: string;
@@ -11,17 +14,28 @@ interface MemorySummary {
 interface MemoryFlashcardsProps {
   threadMemories: MemorySummary[];
   globalMemories: MemorySummary[];
+  onDeleteMemory: (id: string, scope: "global" | "session") => void;
+  onEditMemory: (
+    id: string,
+    scope: "global" | "session",
+    shortSummary: string,
+  ) => void;
+  onAddMemory: (scope: "global" | "session", shortSummary: string) => void;
 }
 
 export const MemoryFlashcards = ({
   threadMemories,
   globalMemories,
+  onDeleteMemory,
+  onEditMemory,
+  onAddMemory,
 }: MemoryFlashcardsProps) => {
-  if (threadMemories.length === 0 && globalMemories.length === 0) {
-    return null;
-  }
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editSummary, setEditSummary] = useState("");
+  const [newGlobalSummary, setNewGlobalSummary] = useState("");
+  const [newThreadSummary, setNewThreadSummary] = useState("");
 
-  const renderList = (memories: MemorySummary[]) => (
+  const renderList = (memories: MemorySummary[], scope: "global" | "session") => (
     <div className="grid gap-2 sm:grid-cols-2">
       {memories.map((memory) => (
         <Card
@@ -39,9 +53,63 @@ export const MemoryFlashcards = ({
                 : ""}
             </span>
           </div>
-          <p className="text-[11px] leading-snug text-foreground">
-            {memory.short_summary}
-          </p>
+          {editingId === memory.id ? (
+            <>
+              <Textarea
+                value={editSummary}
+                onChange={(event) => setEditSummary(event.target.value)}
+                className="mt-1 text-[11px] leading-snug"
+                rows={3}
+              />
+              <div className="mt-2 flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setEditingId(null);
+                    setEditSummary("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    onEditMemory(memory.id, scope, editSummary);
+                    setEditingId(null);
+                    setEditSummary("");
+                  }}
+                >
+                  Save
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-[11px] leading-snug text-foreground">
+                {memory.short_summary}
+              </p>
+              <div className="mt-2 flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setEditingId(memory.id);
+                    setEditSummary(memory.short_summary);
+                  }}
+                >
+                  Edit
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => onDeleteMemory(memory.id, scope)}
+                >
+                  Delete
+                </Button>
+              </div>
+            </>
+          )}
         </Card>
       ))}
     </div>
@@ -62,23 +130,79 @@ export const MemoryFlashcards = ({
       </header>
 
       <div className="grid gap-3 md:grid-cols-2">
-        {globalMemories.length > 0 && (
-          <div className="space-y-1">
-            <p className="text-[11px] font-medium text-muted-foreground">
-              Global memories
+        <div className="space-y-2">
+          <p className="text-[11px] font-medium text-muted-foreground">
+            Global memories
+          </p>
+          {globalMemories.length > 0 ? (
+            renderList(globalMemories, "global")
+          ) : (
+            <p className="text-[11px] text-muted-foreground">
+              No global memories yet.
             </p>
-            {renderList(globalMemories)}
+          )}
+          <div className="space-y-1">
+            <p className="text-[11px] text-muted-foreground">
+              Add global memory
+            </p>
+            <Textarea
+              value={newGlobalSummary}
+              onChange={(event) => setNewGlobalSummary(event.target.value)}
+              placeholder="Short description of what should be remembered globally..."
+              className="text-[11px]"
+              rows={3}
+            />
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                disabled={!newGlobalSummary.trim()}
+                onClick={() => {
+                  onAddMemory("global", newGlobalSummary);
+                  setNewGlobalSummary("");
+                }}
+              >
+                Save
+              </Button>
+            </div>
           </div>
-        )}
+        </div>
 
-        {threadMemories.length > 0 && (
-          <div className="space-y-1">
-            <p className="text-[11px] font-medium text-muted-foreground">
-              Thread memories
+        <div className="space-y-2">
+          <p className="text-[11px] font-medium text-muted-foreground">
+            Thread memories
+          </p>
+          {threadMemories.length > 0 ? (
+            renderList(threadMemories, "session")
+          ) : (
+            <p className="text-[11px] text-muted-foreground">
+              No thread memories yet.
             </p>
-            {renderList(threadMemories)}
+          )}
+          <div className="space-y-1">
+            <p className="text-[11px] text-muted-foreground">
+              Add thread memory
+            </p>
+            <Textarea
+              value={newThreadSummary}
+              onChange={(event) => setNewThreadSummary(event.target.value)}
+              placeholder="Short description of what should be remembered in this thread..."
+              className="text-[11px]"
+              rows={3}
+            />
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                disabled={!newThreadSummary.trim()}
+                onClick={() => {
+                  onAddMemory("session", newThreadSummary);
+                  setNewThreadSummary("");
+                }}
+              >
+                Save
+              </Button>
+            </div>
           </div>
-        )}
+        </div>
       </div>
     </section>
   );
