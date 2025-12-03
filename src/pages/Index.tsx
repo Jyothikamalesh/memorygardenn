@@ -63,6 +63,7 @@ const Index = () => {
   const [isChatting, setIsChatting] = useState(false);
   const [isClassifying, setIsClassifying] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [showMemories, setShowMemories] = useState(false);
 
   useEffect(() => {
     const initSession = async () => {
@@ -358,14 +359,14 @@ const Index = () => {
             ? `⚠️ Conflicts: ${verification.conflicts_detected.join(", ")}`
             : "";
 
+        // Update message with verification details but wait for user choice to set scope
         attachMeta({
           classification,
           verification,
-          memoryScope: "global",
         });
 
         toastRememberGlobally({
-          title: "Remember this globally?",
+          title: "How should I remember this?",
           description: `[${classification.memory_type}] ${verification.adjusted_summary}${
             conflictWarning ? ` — ${conflictWarning}` : ""
           }`,
@@ -374,11 +375,78 @@ const Index = () => {
             <div className="flex gap-2">
               <button
                 onClick={() => {
+                  attachMeta({
+                    classification,
+                    verification,
+                    memoryScope: "global",
+                  });
                   persistMemory(classification, verification, userText);
                 }}
                 className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
               >
                 Yes
+              </button>
+              <button
+                onClick={async () => {
+                  if (!sessionId) {
+                    toast({
+                      title: "Cannot save memory",
+                      description: "No active session",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+
+                  const { data, error } = await supabase
+                    .from("memories")
+                    .insert({
+                      session_id: sessionId,
+                      memory_type: classification.memory_type as MemoryType,
+                      scope: "session",
+                      content: userText,
+                      short_summary: classification.short_summary,
+                      confidence: classification.confidence,
+                      verified: false,
+                      verification_prompt: null,
+                      verification_response: null,
+                    })
+                    .select()
+                    .single();
+
+                  if (error) {
+                    console.error("Failed to store session memory", error);
+                    toast({
+                      title: "Failed to store session memory",
+                      description: error.message,
+                      variant: "destructive",
+                    });
+                  } else if (data) {
+                    attachMeta({
+                      classification,
+                      verification,
+                      memoryScope: "session",
+                    });
+
+                    setThreadMemories((prev) => [
+                      ...prev,
+                      {
+                        id: data.id,
+                        memory_type: data.memory_type as MemoryType,
+                        short_summary: data.short_summary,
+                        scope: data.scope,
+                        confidence: data.confidence,
+                      },
+                    ]);
+
+                    toast({
+                      title: "Thread memory stored",
+                      description: `[${classification.memory_type}] ${classification.short_summary}`,
+                    });
+                  }
+                }}
+                className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
+              >
+                This thread
               </button>
               <button
                 onClick={() => {
@@ -395,14 +463,14 @@ const Index = () => {
           ),
         });
       } else {
+        // Verification was skipped or failed — still let the user choose how to store it
         attachMeta({
           classification,
           verification: null,
-          memoryScope: "global",
         });
 
         toastRememberGlobally({
-          title: "Remember this globally?",
+          title: "How should I remember this?",
           description: `[${classification.memory_type}] ${classification.short_summary}`,
           duration: 15000,
           action: (
@@ -442,6 +510,12 @@ const Index = () => {
                       variant: "destructive",
                     });
                   } else if (data) {
+                    attachMeta({
+                      classification,
+                      verification: null,
+                      memoryScope: "global",
+                    });
+
                     setGlobalMemories((prev) => [
                       ...prev,
                       {
@@ -462,6 +536,68 @@ const Index = () => {
                 className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
               >
                 Yes
+              </button>
+              <button
+                onClick={async () => {
+                  if (!sessionId) {
+                    toast({
+                      title: "Cannot save memory",
+                      description: "No active session",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+
+                  const { data, error } = await supabase
+                    .from("memories")
+                    .insert({
+                      session_id: sessionId,
+                      memory_type: classification.memory_type as MemoryType,
+                      scope: "session",
+                      content: userText,
+                      short_summary: classification.short_summary,
+                      confidence: classification.confidence,
+                      verified: false,
+                      verification_prompt: null,
+                      verification_response: null,
+                    })
+                    .select()
+                    .single();
+
+                  if (error) {
+                    console.error("Failed to store session memory", error);
+                    toast({
+                      title: "Failed to store session memory",
+                      description: error.message,
+                      variant: "destructive",
+                    });
+                  } else if (data) {
+                    attachMeta({
+                      classification,
+                      verification: null,
+                      memoryScope: "session",
+                    });
+
+                    setThreadMemories((prev) => [
+                      ...prev,
+                      {
+                        id: data.id,
+                        memory_type: data.memory_type as MemoryType,
+                        short_summary: data.short_summary,
+                        scope: data.scope,
+                        confidence: data.confidence,
+                      },
+                    ]);
+
+                    toast({
+                      title: "Thread memory stored",
+                      description: `[${classification.memory_type}] ${classification.short_summary}`,
+                    });
+                  }
+                }}
+                className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
+              >
+                This thread
               </button>
               <button
                 onClick={() => {
@@ -653,12 +789,22 @@ const Index = () => {
                 Memory types: Preference, Goal, Health, Biographical Fact, Routine, Procedural Memory, Relationship. LLM verifies & detects conflicts.
               </p>
             </div>
-            {(isClassifying || isVerifying) && (
-              <span className="text-[11px] text-muted-foreground">
-                {isClassifying && "Classifying…"}
-                {isVerifying && "Verifying…"}
-              </span>
-            )}
+            <div className="flex flex-col items-end gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setShowMemories((prev) => !prev)}
+              >
+                {showMemories ? "Hide memories" : "Show memories"}
+              </Button>
+              {(isClassifying || isVerifying) && (
+                <span className="text-[11px] text-muted-foreground">
+                  {isClassifying && "Classifying…"}
+                  {isVerifying && "Verifying…"}
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="flex-1 space-y-3 overflow-y-auto rounded-md border border-border/60 bg-background/60 p-3 text-sm">
@@ -743,10 +889,14 @@ const Index = () => {
 
           </div>
 
-          <MemoryFlashcards
-            threadMemories={threadMemories}
-            globalMemories={globalMemories}
-          />
+          {showMemories && (
+            <div className="mt-3">
+              <MemoryFlashcards
+                threadMemories={threadMemories}
+                globalMemories={globalMemories}
+              />
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="mt-3 flex flex-col gap-2">
             <label htmlFor="chat-input" className="text-xs font-medium text-muted-foreground">

@@ -61,23 +61,25 @@ export const MemoryFlashcards = ({
         </p>
       </header>
 
-      {globalMemories.length > 0 && (
-        <div className="space-y-1">
-          <p className="text-[11px] font-medium text-muted-foreground">
-            Global memories
-          </p>
-          {renderList(globalMemories)}
-        </div>
-      )}
+      <div className="grid gap-3 md:grid-cols-2">
+        {globalMemories.length > 0 && (
+          <div className="space-y-1">
+            <p className="text-[11px] font-medium text-muted-foreground">
+              Global memories
+            </p>
+            {renderList(globalMemories)}
+          </div>
+        )}
 
-      {threadMemories.length > 0 && (
-        <div className="space-y-1">
-          <p className="text-[11px] font-medium text-muted-foreground">
-            Thread memories
-          </p>
-          {renderList(threadMemories)}
-        </div>
-      )}
+        {threadMemories.length > 0 && (
+          <div className="space-y-1">
+            <p className="text-[11px] font-medium text-muted-foreground">
+              Thread memories
+            </p>
+            {renderList(threadMemories)}
+          </div>
+        )}
+      </div>
     </section>
   );
 };
