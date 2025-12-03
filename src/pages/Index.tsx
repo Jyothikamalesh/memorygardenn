@@ -230,13 +230,25 @@ Would you like to remember this globally?`,
         toastRememberGlobally();
       }
     } else {
+      // Not a global candidate - show why it's not remembrance-worthy
+      const notWorthyReason = 
+        classification.memory_type === "ephemeral" 
+          ? "This is temporary information that doesn't need long-term storage."
+          : classification.memory_type === "irrelevant"
+          ? "This doesn't contain information worth remembering."
+          : "This is session-only information, not a global candidate.";
+
       const assistantMessage: ChatMessage = {
         id: nextId + 1,
         role: "assistant",
-        content: `Classification: ${classification.memory_type} (confidence: ${classification.confidence.toFixed(2)}).
-Summary: ${classification.short_summary}.
+        content: `✗ Not remembrance-worthy
+
+Type: ${classification.memory_type}
+Confidence: ${classification.confidence.toFixed(2)}
+Summary: "${classification.short_summary}"
 Reason: ${classification.reason}
-${classification.is_global_candidate ? "" : "(Not a global candidate — ephemeral or irrelevant.)"}`,
+
+${notWorthyReason}`,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
