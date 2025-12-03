@@ -739,7 +739,7 @@ const Index = () => {
         });
 
         toastRememberGlobally({
-          title: "How should I remember this?",
+          title: "Should I remember this globally?",
           description: `[${classification.memory_type}] ${verification.adjusted_summary}${
             conflictWarning ? ` — ${conflictWarning}` : ""
           }`,
@@ -844,7 +844,7 @@ const Index = () => {
         });
 
         toastRememberGlobally({
-          title: "How should I remember this?",
+          title: "Should I remember this globally?",
           description: `[${classification.memory_type}] ${classification.short_summary}`,
           duration: 15000,
           action: (
