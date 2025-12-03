@@ -109,7 +109,10 @@ const Index = () => {
     existingMemories: Array<{ memory_type: MemoryType; short_summary: string }>,
   ): Promise<VerificationResult | null> => {
     try {
+      console.log("verifyMemory called with:", { classification, existingMemories });
       setIsVerifying(true);
+      
+      console.log("Calling memory-verifier function...");
       const { data, error } = await supabase.functions.invoke<VerificationResult | { error: string }>("memory-verifier", {
         body: {
           memory_type: classification.memory_type,
@@ -118,6 +121,7 @@ const Index = () => {
         },
       });
 
+      console.log("memory-verifier response:", { data, error });
       setIsVerifying(false);
 
       if (error) {
@@ -173,7 +177,11 @@ const Index = () => {
 
     if (!classification) return;
 
+    console.log("Classification result:", classification);
+
     if (classification.is_global_candidate && classification.memory_type !== "ephemeral" && classification.memory_type !== "irrelevant") {
+      console.log("This is a global candidate, fetching existing memories...");
+      
       // Fetch existing global memories for conflict detection
       const { data: existingMemories, error: fetchError } = await supabase
         .from("memories")
@@ -185,8 +193,11 @@ const Index = () => {
       }
 
       const existing = (existingMemories ?? []) as Array<{ memory_type: MemoryType; short_summary: string }>;
+      console.log("Existing memories:", existing);
+      console.log("About to call verifyMemory with:", { classification, existing });
 
       const verification = await verifyMemory(classification, existing);
+      console.log("Verification result:", verification);
 
       if (verification) {
         setPendingMemory(classification);
