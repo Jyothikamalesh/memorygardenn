@@ -163,10 +163,8 @@ function toast({ ...props }: Toast) {
   };
 }
 
-function toastRememberGlobally() {
-  return toast({
-    title: "Can I remember this about you globally?",
-  });
+function toastRememberGlobally(props: Toast) {
+  return toast(props);
 }
 
 function useToast() {
