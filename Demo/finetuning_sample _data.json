@@ -1,0 +1,49 @@
+{
+  "preference": [
+    {"text": "I love hiking on weekends", "label": "preference"},
+    {"text": "I hate mornings", "label": "preference"},
+    {"text": "My favorite cuisine is Italian", "label": "preference"}
+  ],
+
+  "goal": [
+    {"text": "I want to learn Japanese", "label": "goal"},
+    {"text": "I'm planning to run a marathon", "label": "goal"},
+    {"text": "My goal is to save for a house", "label": "goal"}
+  ],
+
+  "health": [
+    {"text": "I'm vegetarian", "label": "health"},
+    {"text": "I'm allergic to peanuts", "label": "health"},
+    {"text": "I have type 2 diabetes", "label": "health"}
+  ],
+
+  "biographical": [
+    {"text": "I work at Google as a software engineer", "label": "biographical"},
+    {"text": "I live in San Francisco", "label": "biographical"},
+    {"text": "I studied at MIT", "label": "biographical"}
+  ],
+
+  "relationship": [
+    {"text": "My wife's name is Sarah", "label": "relationship"},
+    {"text": "I have two kids", "label": "relationship"},
+    {"text": "My dog is named Max", "label": "relationship"}
+  ],
+
+  "routine": [
+    {"text": "I wake up at 5am every day", "label": "routine"},
+    {"text": "I always have coffee in the morning", "label": "routine"},
+    {"text": "I call my parents every Sunday", "label": "routine"}
+  ],
+
+  "procedural": [
+    {"text": "Remind me about the meeting tomorrow at 3pm", "label": "procedural"},
+    {"text": "I have a doctor's appointment next Tuesday", "label": "procedural"},
+    {"text": "The deadline is this Friday", "label": "procedural"}
+  ],
+
+  "none": [
+    {"text": "What's the weather like today?", "label": "none"},
+    {"text": "Thanks, that's helpful!", "label": "none"},
+    {"text": "I'm feeling tired right now", "label": "none"}
+  ]
+}
