@@ -76,7 +76,7 @@ Return:
 - conflicts_detected: array of conflicts with existing memories (e.g. ["Conflicts with preference about theme"])`;
 
     const body: any = {
-      model: "google/gemini-2.5-flash-lite",
+      model: "google/gemini-2.5-flash",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
@@ -96,8 +96,8 @@ Return:
                 },
                 adjusted_memory_type: {
                   type: "string",
-                  enum: ["preference", "goal", "health", "biographical_fact", "routine", "procedural_memory", "relationship", null],
-                  description: "Corrected memory type if the original was wrong, otherwise null.",
+                  enum: ["preference", "goal", "health", "biographical_fact", "routine", "procedural_memory", "relationship"],
+                  description: "Corrected memory type if the original was wrong; if unchanged, repeat the original type.",
                 },
                 adjusted_summary: {
                   type: "string",
