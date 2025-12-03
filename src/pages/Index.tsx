@@ -113,13 +113,21 @@ const Index = () => {
       setIsVerifying(true);
       
       console.log("Calling memory-verifier function...");
-      const { data, error } = await supabase.functions.invoke<VerificationResult | { error: string }>("memory-verifier", {
+      
+      // Add timeout to prevent hanging forever
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Memory verification timed out after 30 seconds")), 30000)
+      );
+      
+      const invokePromise = supabase.functions.invoke<VerificationResult | { error: string }>("memory-verifier", {
         body: {
           memory_type: classification.memory_type,
           short_summary: classification.short_summary,
           existing_memories: existingMemories,
         },
       });
+      
+      const { data, error } = await Promise.race([invokePromise, timeoutPromise]) as any;
 
       console.log("memory-verifier response:", { data, error });
       setIsVerifying(false);
