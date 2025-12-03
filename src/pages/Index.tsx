@@ -9,6 +9,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { MemoryFlashcards } from "@/components/MemoryFlashcards";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Database, LogOut } from "lucide-react";
+import { ThreadSidebar } from "@/components/ThreadSidebar";
+import { SidebarProvider } from "@/components/ui/sidebar";
 
 interface ChatMessage {
   id: number;
@@ -141,11 +143,53 @@ const Index = () => {
           content: "Hi! Tell me about yourself and I can remember things about you globally.",
         },
       ]);
+      setThreadMemories([]);
       toast({
         title: "New thread created",
         description: "Starting fresh conversation",
       });
     }
+  };
+
+  const handleThreadSelect = async (threadId: string) => {
+    if (threadId === sessionId) return;
+    
+    setSessionId(threadId);
+    setMessages([
+      {
+        id: 1,
+        role: "assistant",
+        content: "Hi! Tell me about yourself and I can remember things about you globally.",
+      },
+    ]);
+    
+    // Fetch memories for selected thread
+    if (user) {
+      const { data: sessionMem } = await supabase
+        .from("memories")
+        .select("*")
+        .eq("scope", "session")
+        .eq("session_id", threadId)
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+
+      if (sessionMem) {
+        setThreadMemories(
+          sessionMem.map((m) => ({
+            id: m.id,
+            memory_type: m.memory_type,
+            short_summary: m.short_summary,
+            scope: m.scope,
+            confidence: m.confidence || 0,
+          }))
+        );
+      }
+    }
+
+    toast({
+      title: "Thread switched",
+      description: `Now viewing thread ${threadId.slice(0, 8)}`,
+    });
   };
 
   useEffect(() => {
@@ -835,61 +879,69 @@ const Index = () => {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <header className="border-b border-border bg-background/80 backdrop-blur sticky top-0 z-10">
-        <div className="flex items-center justify-between px-6 py-4">
-          <div>
-            <h1 className="text-xl font-semibold">Memory Chat</h1>
-            {sessionId && (
-              <p className="text-xs text-muted-foreground">
-                Thread: {sessionId.slice(0, 8)}
-              </p>
-            )}
-          </div>
-          
-          <nav className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleNewThread}
-              disabled={!user}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              New Thread
-            </Button>
-            
-            <Dialog open={memoriesDialogOpen} onOpenChange={setMemoriesDialogOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Database className="h-4 w-4 mr-2" />
-                  Memories
+    <SidebarProvider>
+      <div className="flex min-h-screen w-full bg-background text-foreground">
+        <ThreadSidebar
+          user={user}
+          currentThreadId={sessionId}
+          onThreadSelect={handleThreadSelect}
+        />
+        
+        <div className="flex flex-1 flex-col">
+          <header className="border-b border-border bg-background/80 backdrop-blur sticky top-0 z-10">
+            <div className="flex items-center justify-between px-6 py-4">
+              <div>
+                <h1 className="text-xl font-semibold">Memory Chat</h1>
+                {sessionId && (
+                  <p className="text-xs text-muted-foreground">
+                    Thread: {sessionId.slice(0, 8)}
+                  </p>
+                )}
+              </div>
+              
+              <nav className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleNewThread}
+                  disabled={!user}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  New Thread
                 </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>Stored Memories</DialogTitle>
-                </DialogHeader>
-                <MemoryFlashcards
-                  threadMemories={threadMemories}
-                  globalMemories={globalMemories}
-                />
-              </DialogContent>
-            </Dialog>
-            
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                await supabase.auth.signOut();
-                navigate("/auth");
-              }}
-            >
-              <LogOut className="h-4 w-4 mr-2" />
-              Logout
-            </Button>
-          </nav>
-        </div>
-      </header>
+                
+                <Dialog open={memoriesDialogOpen} onOpenChange={setMemoriesDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <Database className="h-4 w-4 mr-2" />
+                      Memories
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle>Stored Memories</DialogTitle>
+                    </DialogHeader>
+                    <MemoryFlashcards
+                      threadMemories={threadMemories}
+                      globalMemories={globalMemories}
+                    />
+                  </DialogContent>
+                </Dialog>
+                
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    await supabase.auth.signOut();
+                    navigate("/auth");
+                  }}
+                >
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Logout
+                </Button>
+              </nav>
+            </div>
+          </header>
 
       <main className="flex flex-1 justify-center px-4 py-6">
         <section
@@ -1012,7 +1064,9 @@ const Index = () => {
           </form>
         </section>
       </main>
-    </div>
+        </div>
+      </div>
+    </SidebarProvider>
   );
 };
 
