@@ -1117,7 +1117,12 @@ const Index = () => {
                   onClick={async () => {
                     const { error } = await supabase.auth.signOut();
 
-                    if (error && !String(error.message).toLowerCase().includes("session not found")) {
+                    const message = String(error?.message ?? "").toLowerCase();
+                    const isBenign =
+                      message.includes("session not found") ||
+                      message.includes("auth session missing");
+
+                    if (error && !isBenign) {
                       toast({
                         title: "Logout failed",
                         description: error.message,
