@@ -1,12 +1,22 @@
 import { FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { toastRememberGlobally } from "@/components/ui/use-toast";
+import { toast, toastRememberGlobally } from "@/components/ui/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface ChatMessage {
   id: number;
   role: "user" | "assistant";
   content: string;
+}
+
+interface PreferenceClassification {
+  classification: "preference" | "personal_fact" | "ephemeral" | "irrelevant";
+  is_preference: boolean;
+  is_personal_fact: boolean;
+  is_global_candidate: boolean;
+  short_summary: string;
+  reason: string;
 }
 
 const Index = () => {
@@ -18,11 +28,58 @@ const Index = () => {
     },
   ]);
   const [input, setInput] = useState("");
+  const [isClassifying, setIsClassifying] = useState(false);
 
-  const handleSubmit = (event: FormEvent) => {
+  const classifyPreference = async (text: string): Promise<PreferenceClassification | null> => {
+    try {
+      setIsClassifying(true);
+      const { data, error } = await supabase.functions.invoke<PreferenceClassification | { error: string }>(
+        "preference-classifier",
+        {
+          body: { message: text },
+        },
+      );
+
+      setIsClassifying(false);
+
+      if (error) {
+        console.error("preference-classifier error", error);
+        const message = (error as any).message ?? "Failed to classify preference";
+        toast({
+          title: "Preference classification failed",
+          description: message,
+          variant: "destructive",
+        });
+        return null;
+      }
+
+      if (data && "error" in data && typeof data.error === "string") {
+        const statusError = data.error;
+        toast({
+          title: "Preference classification issue",
+          description: statusError,
+          variant: "destructive",
+        });
+        return null;
+      }
+
+      return data as PreferenceClassification;
+    } catch (error) {
+      console.error("preference-classifier exception", error);
+      setIsClassifying(false);
+      toast({
+        title: "Preference classification failed",
+        description: "Something went wrong while talking to the AI backend.",
+        variant: "destructive",
+      });
+      return null;
+    }
+  };
+
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     const trimmed = input.trim();
-    if (!trimmed) return;
+    if (!trimmed || isClassifying) return;
 
     const nextId = messages.length ? messages[messages.length - 1]!.id + 1 : 1;
 
@@ -33,21 +90,23 @@ const Index = () => {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    setInput("");
 
-    // Very simple heuristic: if user talks about themselves, show the global memory toast
-    if (/\b(i|me|my|mine|myself)\b/i.test(trimmed)) {
+    const classification = await classifyPreference(trimmed);
+
+    if (classification?.is_global_candidate) {
       toastRememberGlobally();
     }
 
-    // Placeholder assistant reply for now
-    const assistantMessage: ChatMessage = {
-      id: nextId + 1,
-      role: "assistant",
-      content: "Got it. I will soon use Lovable AI to respond and remember this when you approve.",
-    };
+    if (classification) {
+      const assistantMessage: ChatMessage = {
+        id: nextId + 1,
+        role: "assistant",
+        content: `Classification: ${classification.classification}.\nSummary: ${classification.short_summary}.\nReason: ${classification.reason}`,
+      };
 
-    setMessages((prev) => [...prev, assistantMessage]);
-    setInput("");
+      setMessages((prev) => [...prev, assistantMessage]);
+    }
   };
 
   return (
@@ -59,7 +118,7 @@ const Index = () => {
             <h1 className="text-lg font-semibold leading-tight">AI Chat with Global Memory</h1>
           </div>
           <span className="rounded-full border border-border/60 px-3 py-1 text-xs text-muted-foreground">
-            Powered by Lovable AI (cheapest model, coming soon)
+            Minimal brutalist UI · Lovable AI (cheapest model) for prefs
           </span>
         </div>
       </header>
@@ -73,9 +132,13 @@ const Index = () => {
             <div>
               <h2 className="text-sm font-medium">Conversation</h2>
               <p className="text-xs text-muted-foreground">
-                Type something about yourself. When it looks like a stable preference or fact, I&apos;ll ask to remember it globally.
+                Tell me about your preferences or long-term facts. I&apos;ll classify them and ask to remember good global
+                candidates.
               </p>
             </div>
+            {isClassifying && (
+              <span className="text-[11px] text-muted-foreground">Classifying preference with Lovable AI…</span>
+            )}
           </div>
 
           <div className="flex-1 space-y-3 overflow-y-auto rounded-md border border-border/60 bg-background/60 p-3 text-sm">
@@ -113,10 +176,10 @@ const Index = () => {
             />
             <div className="flex items-center justify-between gap-3">
               <p className="text-[11px] text-muted-foreground">
-                This is a local prototype. Global memory and AI responses will be wired to Lovable Cloud next.
+                Uses Lovable AI with the cheapest model for preference classification. Global storage comes next.
               </p>
-              <Button type="submit" size="sm" disabled={!input.trim()}>
-                Send
+              <Button type="submit" size="sm" disabled={!input.trim() || isClassifying}>
+                {isClassifying ? "Classifying…" : "Send"}
               </Button>
             </div>
           </form>

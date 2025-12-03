@@ -1,0 +1,4 @@
+project_id = "nhbkywokqgdsbtdkaumz"
+
+[functions.preference-classifier]
+verify_jwt = false

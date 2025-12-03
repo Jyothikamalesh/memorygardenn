@@ -1,0 +1,183 @@
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+interface PreferenceClassification {
+  classification: "preference" | "personal_fact" | "ephemeral" | "irrelevant";
+  is_preference: boolean;
+  is_personal_fact: boolean;
+  is_global_candidate: boolean;
+  short_summary: string;
+  reason: string;
+}
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const { message } = (await req.json()) as { message?: string };
+
+    if (!message || typeof message !== "string") {
+      return new Response(JSON.stringify({ error: "Missing 'message' in request body" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
+      console.error("LOVABLE_API_KEY is not configured");
+      return new Response(JSON.stringify({ error: "AI backend not configured" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const body: any = {
+      model: "google/gemini-2.5-flash-lite",
+      messages: [
+        {
+          role: "system",
+          content:
+            "You classify user messages into preferences and facts for a chat assistant that can remember things globally.",
+        },
+        {
+          role: "user",
+          content:
+            "Classify this message from a user so we know whether to remember it globally as a preference or fact:\n\n" +
+            message,
+        },
+      ],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "classify_preference",
+            description:
+              "Classify whether a piece of text expresses a stable preference or personal fact that is useful to remember globally.",
+            parameters: {
+              type: "object",
+              properties: {
+                classification: {
+                  type: "string",
+                  enum: ["preference", "personal_fact", "ephemeral", "irrelevant"],
+                  description: "High-level category of this message.",
+                },
+                is_preference: {
+                  type: "boolean",
+                  description: "True if the message states a stable preference (e.g. likes, dislikes, style preferences).",
+                },
+                is_personal_fact: {
+                  type: "boolean",
+                  description:
+                    "True if the message states a relatively stable personal fact (e.g. location, job, long-term project).",
+                },
+                is_global_candidate: {
+                  type: "boolean",
+                  description:
+                    "True if this preference or fact should be remembered globally across conversations.",
+                },
+                short_summary: {
+                  type: "string",
+                  description:
+                    "Very short normalized summary of what should be remembered if it is a candidate (e.g. 'User prefers dark mode and concise answers').",
+                },
+                reason: {
+                  type: "string",
+                  description:
+                    "One-sentence explanation of why you classified it this way and whether it should be remembered globally.",
+                },
+              },
+              required: [
+                "classification",
+                "is_preference",
+                "is_personal_fact",
+                "is_global_candidate",
+                "short_summary",
+                "reason",
+              ],
+              additionalProperties: false,
+            },
+          },
+        },
+      ],
+      tool_choice: { type: "function", function: { name: "classify_preference" } },
+    };
+
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      if (response.status === 429) {
+        return new Response(JSON.stringify({ error: "Rate limits exceeded, please try again later." }), {
+          status: 429,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (response.status === 402) {
+        return new Response(
+          JSON.stringify({ error: "Payment required, please add funds to your Lovable AI workspace." }),
+          {
+            status: 402,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
+      }
+
+      const errorText = await response.text();
+      console.error("AI gateway error:", response.status, errorText);
+      return new Response(JSON.stringify({ error: "AI gateway error" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const json = await response.json();
+
+    let parsed: PreferenceClassification | null = null;
+    try {
+      const choice = json.choices?.[0];
+      const toolCall = choice?.message?.tool_calls?.[0];
+      const args = toolCall?.function?.arguments;
+      if (typeof args === "string") {
+        parsed = JSON.parse(args) as PreferenceClassification;
+      } else if (args && typeof args === "object") {
+        parsed = args as PreferenceClassification;
+      }
+    } catch (error) {
+      console.error("Failed to parse tool output:", error);
+    }
+
+    if (!parsed) {
+      console.error("No structured classification returned from AI", json);
+      return new Response(JSON.stringify({ error: "Failed to classify preference" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    return new Response(JSON.stringify(parsed), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error("preference-classifier error:", error);
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
