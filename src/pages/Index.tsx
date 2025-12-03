@@ -7,6 +7,8 @@ import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { MemoryFlashcards } from "@/components/MemoryFlashcards";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Plus, Database, LogOut } from "lucide-react";
 
 interface ChatMessage {
   id: number;
@@ -67,7 +69,7 @@ const Index = () => {
   const [isChatting, setIsChatting] = useState(false);
   const [isClassifying, setIsClassifying] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
-  const [showMemories, setShowMemories] = useState(false);
+  const [memoriesDialogOpen, setMemoriesDialogOpen] = useState(false);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -114,6 +116,37 @@ const Index = () => {
     };
     void initSession();
   }, [user]);
+
+  const handleNewThread = async () => {
+    if (!user) return;
+    
+    const { data, error } = await supabase
+      .from("sessions")
+      .insert({ user_id: user.id })
+      .select()
+      .single();
+    
+    if (error) {
+      toast({
+        title: "Failed to create new thread",
+        description: error.message,
+        variant: "destructive",
+      });
+    } else {
+      setSessionId(data.id);
+      setMessages([
+        {
+          id: 1,
+          role: "assistant",
+          content: "Hi! Tell me about yourself and I can remember things about you globally.",
+        },
+      ]);
+      toast({
+        title: "New thread created",
+        description: "Starting fresh conversation",
+      });
+    }
+  };
 
   useEffect(() => {
     if (!sessionId || !user) return;
@@ -803,90 +836,95 @@ const Index = () => {
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <header className="border-b border-border/60 bg-background/80 backdrop-blur">
-        <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
+      <header className="border-b border-border bg-background/80 backdrop-blur sticky top-0 z-10">
+        <div className="flex items-center justify-between px-6 py-4">
           <div>
-            <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Prototype</p>
-            <h1 className="text-lg font-semibold leading-tight">AI Chat with Global Memory</h1>
-          </div>
-          <div className="flex flex-col items-end gap-1">
-            <span className="rounded-full border border-border/60 px-3 py-1 text-[10px] text-muted-foreground">
-              Minimal brutalist · Lovable AI (cheapest)
-            </span>
+            <h1 className="text-xl font-semibold">Memory Chat</h1>
             {sessionId && (
-              <span className="text-[9px] text-muted-foreground/60">
-                Session: {sessionId.slice(0, 8)}
-              </span>
+              <p className="text-xs text-muted-foreground">
+                Thread: {sessionId.slice(0, 8)}
+              </p>
             )}
           </div>
+          
+          <nav className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleNewThread}
+              disabled={!user}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              New Thread
+            </Button>
+            
+            <Dialog open={memoriesDialogOpen} onOpenChange={setMemoriesDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <Database className="h-4 w-4 mr-2" />
+                  Memories
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Stored Memories</DialogTitle>
+                </DialogHeader>
+                <MemoryFlashcards
+                  threadMemories={threadMemories}
+                  globalMemories={globalMemories}
+                />
+              </DialogContent>
+            </Dialog>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                await supabase.auth.signOut();
+                navigate("/auth");
+              }}
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              Logout
+            </Button>
+          </nav>
         </div>
       </header>
 
-      <main className="flex flex-1 justify-center px-4 py-4">
+      <main className="flex flex-1 justify-center px-4 py-6">
         <section
           aria-label="Chat with AI assistant"
-          className="flex h-full w-full max-w-4xl flex-col rounded-lg border border-border/70 bg-card/60 p-3 sm:p-4"
+          className="flex h-full w-full max-w-4xl flex-col gap-4"
         >
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-medium">Conversation</h2>
-              <p className="text-xs text-muted-foreground">
-                Memory types: Preference, Goal, Health, Biographical Fact, Routine, Procedural Memory, Relationship. LLM verifies & detects conflicts.
-              </p>
+          {(isClassifying || isVerifying) && (
+            <div className="text-center">
+              <span className="text-sm text-muted-foreground">
+                {isClassifying && "Classifying memory..."}
+                {isVerifying && "Verifying memory..."}
+              </span>
             </div>
-            <div className="flex flex-col items-end gap-2">
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setShowMemories((prev) => !prev)}
-                >
-                  {showMemories ? "Hide memories" : "Show memories"}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={async () => {
-                    await supabase.auth.signOut();
-                    navigate("/auth");
-                  }}
-                >
-                  Logout
-                </Button>
-              </div>
-              {(isClassifying || isVerifying) && (
-                <span className="text-[11px] text-muted-foreground">
-                  {isClassifying && "Classifying…"}
-                  {isVerifying && "Verifying…"}
-                </span>
-              )}
-            </div>
-          </div>
+          )}
 
-          <div className="flex-1 space-y-3 overflow-y-auto rounded-md border border-border/60 bg-background/60 p-3 text-sm">
+          <div className="flex-1 space-y-3 overflow-y-auto rounded-md border border-border bg-card p-4">
             {messages.map((message) => {
               const hasClassification = message.role === "user" && !!message.classification;
 
               const messageContent = (
                 <article
                   key={message.id}
-                  className="flex max-w-[80%] flex-col gap-1 rounded-lg border border-border/60 bg-card px-3 py-2 shadow-sm"
+                  className={`flex max-w-[80%] flex-col gap-1 rounded-lg px-4 py-3 ${
+                    message.role === "assistant"
+                      ? "bg-muted"
+                      : "bg-primary text-primary-foreground ml-auto"
+                  }`}
                 >
-                  <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                    <span
-                      className={
-                        message.role === "assistant"
-                          ? "rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary"
-                          : "rounded-full bg-secondary/20 px-2 py-0.5 text-[10px] text-secondary-foreground"
-                      }
-                    >
+                  <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-wide opacity-70">
+                    <span>
                       {message.role === "assistant" ? "Assistant" : "You"}
                     </span>
 
                     {hasClassification && message.classification && (
-                      <span className="rounded-full border border-border/60 px-2 py-0.5 text-[9px] lowercase text-muted-foreground">
+                      <span className="rounded-full border border-current px-2 py-0.5 text-[9px] lowercase opacity-60">
                         {message.memoryScope === "global"
                           ? `global · ${message.classification.memory_type}`
                           : message.memoryScope === "session"
@@ -947,33 +985,29 @@ const Index = () => {
 
           </div>
 
-          {showMemories && (
-            <div className="mt-3">
-              <MemoryFlashcards
-                threadMemories={threadMemories}
-                globalMemories={globalMemories}
+          <form onSubmit={handleSubmit} className="flex flex-col gap-3 border-t border-border pt-4">
+            <div className="flex gap-2">
+              <Textarea
+                id="chat-input"
+                placeholder="Type your message..."
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSubmit(e);
+                  }
+                }}
+                className="min-h-[80px] resize-none"
               />
             </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="mt-3 flex flex-col gap-2">
-            <label htmlFor="chat-input" className="text-xs font-medium text-muted-foreground">
-              Message
-            </label>
-            <Textarea
-              id="chat-input"
-              placeholder="For example: I love minimalist design and dark mode."
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              className="min-h-[80px] resize-none bg-background/80"
-            />
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-[11px] text-muted-foreground">
-                 Classification → Verification → Conflict detection runs in the background. Hover your messages to see memory details.
-               </p>
-               <Button type="submit" size="sm" disabled={!input.trim() || isChatting || !sessionId}>
-                 {isChatting ? "Sending…" : "Send"}
-               </Button>
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                Press Enter to send, Shift+Enter for new line
+              </p>
+              <Button type="submit" disabled={!input.trim() || isChatting || !sessionId}>
+                {isChatting ? "Sending..." : "Send"}
+              </Button>
             </div>
           </form>
         </section>
