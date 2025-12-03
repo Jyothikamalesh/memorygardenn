@@ -772,269 +772,86 @@ const Index = () => {
       const verification = await verifyMemory(classification, existing);
       console.log("Verification result:", verification);
 
+      // Automatically store memories instead of asking via an interactive toast
       if (verification) {
-        const conflictWarning =
-          verification.conflicts_detected.length > 0
-            ? `⚠️ Conflicts: ${verification.conflicts_detected.join(", ")}`
-            : "";
-
-        // Update message with verification details but wait for user choice to set scope
+        // Verified global candidate: store as a global memory using the verified summary/type
         attachMeta({
           classification,
           verification,
+          memoryScope: "global",
         });
 
+        await persistMemory(classification, verification, userText);
+
+        const conflictWarning =
+          verification.conflicts_detected.length > 0
+            ? `Conflicts: ${verification.conflicts_detected.join(", ")}`
+            : "";
+
         toast({
-          title: "Should I remember this globally?",
-          description: `[${classification.memory_type}] ${verification.adjusted_summary}${
-            conflictWarning ? ` — ${conflictWarning}` : ""
-          }`,
-          duration: 15000,
-          action: (
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  attachMeta({
-                    classification,
-                    verification,
-                    memoryScope: "global",
-                  });
-                  persistMemory(classification, verification, userText);
-                }}
-                className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-              >
-                Yes
-              </button>
-              <button
-                onClick={async () => {
-                  if (!sessionId || !user) {
-                    toast({
-                      title: "Cannot save memory",
-                      description: "No active session or user",
-                      variant: "destructive",
-                    });
-                    return;
-                  }
-
-                  const { data, error } = await supabase
-                    .from("memories")
-                    .insert({
-                      session_id: sessionId,
-                      user_id: user.id,
-                      memory_type: classification.memory_type as MemoryType,
-                      scope: "session",
-                      content: userText,
-                      short_summary: classification.short_summary,
-                      confidence: classification.confidence,
-                      verified: false,
-                      verification_prompt: null,
-                      verification_response: null,
-                    })
-                    .select()
-                    .single();
-
-                  if (error) {
-                    console.error("Failed to store session memory", error);
-                    toast({
-                      title: "Failed to store session memory",
-                      description: error.message,
-                      variant: "destructive",
-                    });
-                  } else if (data) {
-                    attachMeta({
-                      classification,
-                      verification,
-                      memoryScope: "session",
-                    });
-
-                    setThreadMemories((prev) => [
-                      ...prev,
-                      {
-                        id: data.id,
-                        memory_type: data.memory_type as MemoryType,
-                        short_summary: data.short_summary,
-                        scope: data.scope,
-                        confidence: data.confidence,
-                      },
-                    ]);
-
-                    toast({
-                      title: "Thread memory stored",
-                      description: `[${classification.memory_type}] ${classification.short_summary}`,
-                    });
-                  }
-                }}
-                className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
-              >
-                This thread
-              </button>
-              <button
-                onClick={() => {
-                  toast({
-                    title: "Memory not saved",
-                    description: "You chose not to remember this.",
-                  });
-                }}
-                className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
-              >
-                No
-              </button>
-            </div>
-          ),
+          title: "Global memory saved",
+          description:
+            `[${classification.memory_type}] ${verification.adjusted_summary}` +
+            (conflictWarning ? ` — ${conflictWarning}` : ""),
         });
       } else {
-        // Verification was skipped or failed — still let the user choose how to store it
-        attachMeta({
-          classification,
-          verification: null,
-        });
+        // Verifier skipped or failed: still store as a global memory based on the raw classification
+        if (!sessionId || !user) {
+          toast({
+            title: "Cannot save memory",
+            description: "No active session or user",
+            variant: "destructive",
+          });
+          return;
+        }
 
-        toast({
-          title: "Should I remember this globally?",
-          description: `[${classification.memory_type}] ${classification.short_summary}`,
-          duration: 15000,
-          action: (
-            <div className="flex gap-2">
-              <button
-                onClick={async () => {
-                  if (!sessionId || !user) {
-                    toast({
-                      title: "Cannot save memory",
-                      description: "No active session or user",
-                      variant: "destructive",
-                    });
-                    return;
-                  }
+        const { data, error } = await supabase
+          .from("memories")
+          .insert({
+            session_id: sessionId,
+            user_id: user.id,
+            memory_type: classification.memory_type as MemoryType,
+            scope: "global",
+            content: userText,
+            short_summary: classification.short_summary,
+            confidence: classification.confidence,
+            verified: false,
+            verification_prompt: null,
+            verification_response: null,
+          })
+          .select()
+          .single();
 
-                  const { data, error } = await supabase
-                    .from("memories")
-                    .insert({
-                      session_id: sessionId,
-                      user_id: user.id,
-                      memory_type: classification.memory_type as MemoryType,
-                      scope: "global",
-                      content: userText,
-                      short_summary: classification.short_summary,
-                      confidence: classification.confidence,
-                      verified: false,
-                      verification_prompt: null,
-                      verification_response: null,
-                    })
-                    .select()
-                    .single();
+        if (error) {
+          console.error("Failed to save global memory (unverified)", error);
+          toast({
+            title: "Failed to save memory",
+            description: error.message,
+            variant: "destructive",
+          });
+        } else if (data) {
+          attachMeta({
+            classification,
+            verification: null,
+            memoryScope: "global",
+          });
 
-                  if (error) {
-                    console.error("Failed to save global memory (unverified)", error);
-                    toast({
-                      title: "Failed to save memory",
-                      description: error.message,
-                      variant: "destructive",
-                    });
-                  } else if (data) {
-                    attachMeta({
-                      classification,
-                      verification: null,
-                      memoryScope: "global",
-                    });
+          setGlobalMemories((prev) => [
+            ...prev,
+            {
+              id: data.id,
+              memory_type: data.memory_type as MemoryType,
+              short_summary: data.short_summary,
+              scope: data.scope,
+              confidence: data.confidence,
+            },
+          ]);
 
-                    setGlobalMemories((prev) => [
-                      ...prev,
-                      {
-                        id: data.id,
-                        memory_type: data.memory_type as MemoryType,
-                        short_summary: data.short_summary,
-                        scope: data.scope,
-                        confidence: data.confidence,
-                      },
-                    ]);
-
-                    toast({
-                      title: "Memory saved",
-                      description: `Remembered: ${classification.short_summary}`,
-                    });
-                  }
-                }}
-                className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-              >
-                Yes
-              </button>
-              <button
-                onClick={async () => {
-                  if (!sessionId || !user) {
-                    toast({
-                      title: "Cannot save memory",
-                      description: "No active session or user",
-                      variant: "destructive",
-                    });
-                    return;
-                  }
-
-                  const { data, error } = await supabase
-                    .from("memories")
-                    .insert({
-                      session_id: sessionId,
-                      user_id: user.id,
-                      memory_type: classification.memory_type as MemoryType,
-                      scope: "session",
-                      content: userText,
-                      short_summary: classification.short_summary,
-                      confidence: classification.confidence,
-                      verified: false,
-                      verification_prompt: null,
-                      verification_response: null,
-                    })
-                    .select()
-                    .single();
-
-                  if (error) {
-                    console.error("Failed to store session memory", error);
-                    toast({
-                      title: "Failed to store session memory",
-                      description: error.message,
-                      variant: "destructive",
-                    });
-                  } else if (data) {
-                    attachMeta({
-                      classification,
-                      verification: null,
-                      memoryScope: "session",
-                    });
-
-                    setThreadMemories((prev) => [
-                      ...prev,
-                      {
-                        id: data.id,
-                        memory_type: data.memory_type as MemoryType,
-                        short_summary: data.short_summary,
-                        scope: data.scope,
-                        confidence: data.confidence,
-                      },
-                    ]);
-
-                    toast({
-                      title: "Thread memory stored",
-                      description: `[${classification.memory_type}] ${classification.short_summary}`,
-                    });
-                  }
-                }}
-                className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
-              >
-                This thread
-              </button>
-              <button
-                onClick={() => {
-                  toast({
-                    title: "Memory not saved",
-                    description: "You chose not to remember this.",
-                  });
-                }}
-                className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
-              >
-                No
-              </button>
-            </div>
-          ),
-        });
+          toast({
+            title: "Global memory saved",
+            description: `Remembered: ${classification.short_summary}`,
+          });
+        }
       }
     } else if (
       !classification.is_global_candidate &&
