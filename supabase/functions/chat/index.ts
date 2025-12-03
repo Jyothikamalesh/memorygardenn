@@ -23,13 +23,60 @@ serve(async (req) => {
       });
     }
 
-    const { messages } = (await req.json()) as { messages: ChatMessage[] };
+    const {
+      messages,
+      globalMemories,
+      threadMemories,
+    } = (await req.json()) as {
+      messages: ChatMessage[];
+      globalMemories?: Array<{
+        memory_type: string;
+        short_summary: string;
+        scope: string;
+        confidence: number | null;
+      }>;
+      threadMemories?: Array<{
+        memory_type: string;
+        short_summary: string;
+        scope: string;
+        confidence: number | null;
+      }>;
+    };
+
     if (!messages || !Array.isArray(messages)) {
       return new Response(JSON.stringify({ error: "Missing messages array" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    const memoryLines: string[] = [];
+
+    if (Array.isArray(globalMemories) && globalMemories.length > 0) {
+      memoryLines.push(
+        "Global memories:",
+        ...globalMemories.map(
+          (m) =>
+            `- [${m.memory_type}] (${m.confidence ?? "?"}) ${m.short_summary}`,
+        ),
+      );
+    }
+
+    if (Array.isArray(threadMemories) && threadMemories.length > 0) {
+      memoryLines.push(
+        "Thread-specific memories:",
+        ...threadMemories.map(
+          (m) =>
+            `- [${m.memory_type}] (${m.confidence ?? "?"}) ${m.short_summary}`,
+        ),
+      );
+    }
+
+    const memoryContext = memoryLines.length
+      ? `\n\nHere are the user's stored memories. Use them when relevant to answer the user's current questions, but don't list them explicitly unless helpful:\n${memoryLines.join(
+          "\n",
+        )}`
+      : "";
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -51,7 +98,8 @@ serve(async (req) => {
           {
             role: "system",
             content:
-              "You are a helpful AI assistant embedded in a prototype called 'AI Chat with Global Memory'. Answer the user's question clearly and concisely and do not talk about internal memory classification.",
+              "You are a helpful AI assistant embedded in a prototype called 'AI Chat with Global Memory'. Answer the user's question clearly and concisely and do not talk about internal memory classification." +
+              memoryContext,
           },
           ...messages.map((m) => ({ role: m.role, content: m.content })),
         ],

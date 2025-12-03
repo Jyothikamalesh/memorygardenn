@@ -694,7 +694,11 @@ const Index = () => {
         error?: string;
         code?: number;
       }>("chat", {
-        body: { messages: conversation },
+        body: {
+          messages: conversation,
+          globalMemories,
+          threadMemories,
+        },
       });
 
       if (error || !data || !data.content) {
