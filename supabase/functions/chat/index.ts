@@ -73,9 +73,7 @@ serve(async (req) => {
     }
 
     const memoryContext = memoryLines.length
-      ? `\n\nHere are the user's stored memories. Use them when relevant to answer the user's current questions, but don't list them explicitly unless helpful:\n${memoryLines.join(
-          "\n",
-        )}`
+      ? `\n\nYou have access to the following structured user memories. Treat them as ground truth about the user's preferences, routines, relationships and facts. When the user's question is about a recommendation or decision that relates to these topics, you MUST base your answer primarily on these memories and keep your response consistent with them. Do not list the memories verbatim unless it is clearly helpful for the user.\n\nUSER MEMORIES:\n${memoryLines.join("\n")}`
       : "";
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -98,7 +96,7 @@ serve(async (req) => {
           {
             role: "system",
             content:
-              "You are a helpful AI assistant embedded in a prototype called 'AI Chat with Global Memory'. Answer the user's question clearly and concisely and do not talk about internal memory classification." +
+              "You are a helpful AI assistant embedded in a prototype called 'AI Chat with Global Memory'. Answer the user's question clearly and concisely, prefer using the user's stored memories whenever they are relevant, and do not talk about internal memory classification or how memories are stored." +
               memoryContext,
           },
           ...messages.map((m) => ({ role: m.role, content: m.content })),
