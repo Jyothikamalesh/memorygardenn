@@ -6,13 +6,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+type MemoryType = "preference" | "goal" | "health" | "biographical_fact" | "routine" | "procedural_memory" | "relationship";
+
 interface PreferenceClassification {
-  classification: "preference" | "personal_fact" | "ephemeral" | "irrelevant";
-  is_preference: boolean;
-  is_personal_fact: boolean;
+  memory_type: MemoryType | "ephemeral" | "irrelevant";
   is_global_candidate: boolean;
   short_summary: string;
   reason: string;
+  confidence: number;
 }
 
 serve(async (req) => {
@@ -58,56 +59,64 @@ serve(async (req) => {
         {
           type: "function",
           function: {
-            name: "classify_preference",
+            name: "classify_memory",
             description:
-              "Classify whether a piece of text expresses a stable preference or personal fact that is useful to remember globally.",
+              "Classify a user message into one of the memory types for long-term recall and session management.",
             parameters: {
               type: "object",
               properties: {
-                classification: {
+                memory_type: {
                   type: "string",
-                  enum: ["preference", "personal_fact", "ephemeral", "irrelevant"],
-                  description: "High-level category of this message.",
-                },
-                is_preference: {
-                  type: "boolean",
-                  description: "True if the message states a stable preference (e.g. likes, dislikes, style preferences).",
-                },
-                is_personal_fact: {
-                  type: "boolean",
+                  enum: [
+                    "preference",
+                    "goal",
+                    "health",
+                    "biographical_fact",
+                    "routine",
+                    "procedural_memory",
+                    "relationship",
+                    "ephemeral",
+                    "irrelevant"
+                  ],
                   description:
-                    "True if the message states a relatively stable personal fact (e.g. location, job, long-term project).",
+                    "Type of memory: preference (likes/dislikes), goal (objectives), health (medical info), biographical_fact (stable personal info), routine (habits), procedural_memory (how-to knowledge), relationship (info about others), ephemeral (temporary), irrelevant (not worth remembering).",
                 },
                 is_global_candidate: {
                   type: "boolean",
                   description:
-                    "True if this preference or fact should be remembered globally across conversations.",
+                    "True if this memory should persist across sessions globally; false if it is session-only or ephemeral.",
                 },
                 short_summary: {
                   type: "string",
                   description:
-                    "Very short normalized summary of what should be remembered if it is a candidate (e.g. 'User prefers dark mode and concise answers').",
+                    "Very short normalized summary of what should be remembered (e.g. 'User prefers minimalist design and dark mode').",
                 },
                 reason: {
                   type: "string",
                   description:
-                    "One-sentence explanation of why you classified it this way and whether it should be remembered globally.",
+                    "One-sentence explanation of why this was classified as this memory_type and scope.",
+                },
+                confidence: {
+                  type: "number",
+                  description:
+                    "A confidence score between 0 and 1 indicating how certain the classification is (e.g. 0.95 for very certain).",
+                  minimum: 0,
+                  maximum: 1,
                 },
               },
               required: [
-                "classification",
-                "is_preference",
-                "is_personal_fact",
+                "memory_type",
                 "is_global_candidate",
                 "short_summary",
                 "reason",
+                "confidence",
               ],
               additionalProperties: false,
             },
           },
         },
       ],
-      tool_choice: { type: "function", function: { name: "classify_preference" } },
+      tool_choice: { type: "function", function: { name: "classify_memory" } },
     };
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
