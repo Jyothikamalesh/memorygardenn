@@ -484,74 +484,85 @@ const Index = () => {
           </div>
 
           <div className="flex-1 space-y-3 overflow-y-auto rounded-md border border-border/60 bg-background/60 p-3 text-sm">
-            {messages.map((message) => (
-              <article
-                key={message.id}
-                className="flex max-w-[80%] flex-col gap-1 rounded-lg border border-border/60 bg-card px-3 py-2 shadow-sm"
-              >
-                <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                  <span
-                    className={
-                      message.role === "assistant"
-                        ? "rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary"
-                        : "rounded-full bg-secondary/20 px-2 py-0.5 text-[10px] text-secondary-foreground"
-                    }
-                  >
-                    {message.role === "assistant" ? "Assistant" : "You"}
-                  </span>
+            {messages.map((message) => {
+              const hasClassification = message.role === "user" && !!message.classification;
 
-                  {message.role === "user" && message.classification && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="rounded-full border border-border/60 px-2 py-0.5 text-[9px] lowercase text-muted-foreground">
-                          {message.memoryScope === "global"
-                            ? `global · ${message.classification.memory_type}`
-                            : message.memoryScope === "session"
-                            ? `session · ${message.classification.memory_type}`
-                            : message.classification.memory_type}
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" align="start" className="max-w-xs text-left">
-                        <p className="mb-1 text-[11px] font-semibold">Memory classification</p>
+              const messageContent = (
+                <article
+                  key={message.id}
+                  className="flex max-w-[80%] flex-col gap-1 rounded-lg border border-border/60 bg-card px-3 py-2 shadow-sm"
+                >
+                  <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    <span
+                      className={
+                        message.role === "assistant"
+                          ? "rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary"
+                          : "rounded-full bg-secondary/20 px-2 py-0.5 text-[10px] text-secondary-foreground"
+                      }
+                    >
+                      {message.role === "assistant" ? "Assistant" : "You"}
+                    </span>
+
+                    {hasClassification && message.classification && (
+                      <span className="rounded-full border border-border/60 px-2 py-0.5 text-[9px] lowercase text-muted-foreground">
+                        {message.memoryScope === "global"
+                          ? `global · ${message.classification.memory_type}`
+                          : message.memoryScope === "session"
+                          ? `session · ${message.classification.memory_type}`
+                          : message.classification.memory_type}
+                      </span>
+                    )}
+                  </div>
+                  <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
+                </article>
+              );
+
+              if (hasClassification && message.classification) {
+                return (
+                  <Tooltip key={message.id}>
+                    <TooltipTrigger asChild>{messageContent}</TooltipTrigger>
+                    <TooltipContent side="top" align="start" className="max-w-xs text-left">
+                      <p className="mb-1 text-[11px] font-semibold">Memory classification</p>
+                      <p className="text-[11px]">
+                        <span className="font-medium">Type:</span> {message.classification.memory_type}
+                      </p>
+                      {message.memoryScope && (
                         <p className="text-[11px]">
-                          <span className="font-medium">Type:</span> {message.classification.memory_type}
+                          <span className="font-medium">Scope:</span> {message.memoryScope}
                         </p>
-                        {message.memoryScope && (
-                          <p className="text-[11px]">
-                            <span className="font-medium">Scope:</span> {message.memoryScope}
+                      )}
+                      <p className="mt-1 text-[11px]">
+                        <span className="font-medium">Summary:</span> {message.classification.short_summary}
+                      </p>
+                      <p className="text-[11px]">
+                        <span className="font-medium">Confidence:</span>{" "}
+                        {message.classification.confidence.toFixed(2)}
+                      </p>
+                      <p className="mt-1 text-[11px]">
+                        <span className="font-medium">Reason:</span> {message.classification.reason}
+                      </p>
+                      {message.verification && (
+                        <>
+                          <p className="mt-1 text-[11px]">
+                            <span className="font-medium">Verification:</span>{" "}
+                            {message.verification.verification_explanation}
                           </p>
-                        )}
-                        <p className="mt-1 text-[11px]">
-                          <span className="font-medium">Summary:</span> {message.classification.short_summary}
-                        </p>
-                        <p className="text-[11px]">
-                          <span className="font-medium">Confidence:</span>{" "}
-                          {message.classification.confidence.toFixed(2)}
-                        </p>
-                        <p className="mt-1 text-[11px]">
-                          <span className="font-medium">Reason:</span> {message.classification.reason}
-                        </p>
-                        {message.verification && (
-                          <>
-                            <p className="mt-1 text-[11px]">
-                              <span className="font-medium">Verification:</span>{" "}
-                              {message.verification.verification_explanation}
+                          {message.verification.conflicts_detected.length > 0 && (
+                            <p className="text-[11px]">
+                              <span className="font-medium">Conflicts:</span>{" "}
+                              {message.verification.conflicts_detected.join(", ")}
                             </p>
-                            {message.verification.conflicts_detected.length > 0 && (
-                              <p className="text-[11px]">
-                                <span className="font-medium">Conflicts:</span>{" "}
-                                {message.verification.conflicts_detected.join(", ")}
-                              </p>
-                            )}
-                          </>
-                        )}
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                </div>
-                <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
-              </article>
-            ))}
+                          )}
+                        </>
+                      )}
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              }
+
+              return messageContent;
+            })}
+
           </div>
 
           <form onSubmit={handleSubmit} className="mt-3 flex flex-col gap-2">
