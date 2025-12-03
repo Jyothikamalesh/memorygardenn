@@ -68,6 +68,7 @@ const Index = () => {
   ]);
   const [threadMemories, setThreadMemories] = useState<MemorySummary[]>([]);
   const [globalMemories, setGlobalMemories] = useState<MemorySummary[]>([]);
+  const [threadMessagesMap, setThreadMessagesMap] = useState<Record<string, ChatMessage[]>>({});
   const [input, setInput] = useState("");
   const [isChatting, setIsChatting] = useState(false);
   const [isClassifying, setIsClassifying] = useState(false);
@@ -105,6 +106,7 @@ const Index = () => {
         .select("id, title")
         .eq("user_id", user.id)
         .order("last_active_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       if (error) {
@@ -226,16 +228,23 @@ const Index = () => {
   };
   const handleThreadSelect = async (threadId: string) => {
     if (threadId === sessionId) return;
-    
+
     setSessionId(threadId);
-    setMessages([
-      {
-        id: 1,
-        role: "assistant",
-        content: "Hi! Tell me about yourself and I can remember things about you globally.",
-      },
-    ]);
-    
+
+    setMessages(() => {
+      const existing = threadMessagesMap[threadId];
+      if (existing && existing.length > 0) {
+        return existing;
+      }
+      return [
+        {
+          id: 1,
+          role: "assistant",
+          content: "Hi! Tell me about yourself and I can remember things about you globally.",
+        },
+      ];
+    });
+
     // Fetch memories for selected thread
     if (user) {
       const { data: sessionRow } = await (supabase
@@ -1049,6 +1058,14 @@ const Index = () => {
       });
     }
   };
+
+  useEffect(() => {
+    if (!sessionId) return;
+    setThreadMessagesMap((prev) => ({
+      ...prev,
+      [sessionId]: messages,
+    }));
+  }, [sessionId, messages]);
 
   const askAssistant = async (
     conversation: { role: "user" | "assistant"; content: string }[],
