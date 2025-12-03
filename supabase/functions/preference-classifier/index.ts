@@ -46,7 +46,9 @@ serve(async (req) => {
         {
           role: "system",
           content:
-            "You classify user messages into preferences and facts for a chat assistant that can remember things globally.",
+            "You classify user messages into structured memories for a chat assistant that can remember things globally. " +
+            "Treat future appointments, reminders, and tasks (for example, 'remind me about my dentist appointment next week') as 'goal' memories and usually set is_global_candidate to true unless they are clearly limited to the current conversation. " +
+            "Long-term preferences, recurring routines, and important personal facts should also be global candidates, while short-lived or trivial details should be classified as 'ephemeral' or 'irrelevant' with is_global_candidate set to false.",
         },
         {
           role: "user",

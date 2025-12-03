@@ -68,7 +68,7 @@ const Index = () => {
   ]);
   const [threadMemories, setThreadMemories] = useState<MemorySummary[]>([]);
   const [globalMemories, setGlobalMemories] = useState<MemorySummary[]>([]);
-  const [threadMessagesMap, setThreadMessagesMap] = useState<Record<string, ChatMessage[]>>({});
+  
   const [input, setInput] = useState("");
   const [isChatting, setIsChatting] = useState(false);
   const [isClassifying, setIsClassifying] = useState(false);
@@ -120,8 +120,10 @@ const Index = () => {
       }
 
       if (data) {
-        setSessionId((data as any).id as string);
+        const existingSessionId = (data as any).id as string;
+        setSessionId(existingSessionId);
         setThreadTitle(((data as any).title as string | null) ?? null);
+        await loadMessagesForSession(existingSessionId, user);
       } else {
         setSessionId(null);
         setThreadTitle(null);
@@ -147,16 +149,31 @@ const Index = () => {
         variant: "destructive",
       });
     } else {
+      const greetingMessage =
+        "Hi! Tell me about yourself and I can remember things about you globally.";
+      
       setSessionId(data.id);
       setThreadTitle(null);
       setMessages([
         {
           id: 1,
           role: "assistant",
-          content: "Hi! Tell me about yourself and I can remember things about you globally.",
+          content: greetingMessage,
         },
       ]);
       setThreadMemories([]);
+
+      try {
+        await supabase.from("messages").insert({
+          user_id: user.id,
+          session_id: data.id,
+          role: "assistant",
+          content: greetingMessage,
+        });
+      } catch (error) {
+        console.error("Failed to store initial assistant message", error);
+      }
+
       toast({
         title: "New thread created",
         description: "Starting fresh conversation",
@@ -226,26 +243,53 @@ const Index = () => {
   const handleThreadDelete = async (threadId: string) => {
     await deleteThreadById(threadId);
   };
-  const handleThreadSelect = async (threadId: string) => {
-    if (threadId === sessionId) return;
 
-    setSessionId(threadId);
+  const loadMessagesForSession = async (threadId: string, currentUser: User | null) => {
+    if (!currentUser) return;
 
-    setMessages(() => {
-      const existing = threadMessagesMap[threadId];
-      if (existing && existing.length > 0) {
-        return existing;
-      }
-      return [
+    const { data, error } = await supabase
+      .from("messages")
+      .select("role, content, created_at")
+      .eq("session_id", threadId)
+      .eq("user_id", currentUser.id)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("Failed to load messages for session", error);
+      toast({
+        title: "Failed to load conversation",
+        description: "Could not load messages for this thread.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!data || data.length === 0) {
+      setMessages([
         {
           id: 1,
           role: "assistant",
           content: "Hi! Tell me about yourself and I can remember things about you globally.",
         },
-      ];
-    });
+      ]);
+      return;
+    }
 
-    // Fetch memories for selected thread
+    const mapped: ChatMessage[] = (data as any[]).map((row, index) => ({
+      id: index + 1,
+      role: row.role,
+      content: row.content,
+    }));
+
+    setMessages(mapped);
+  };
+
+  const handleThreadSelect = async (threadId: string) => {
+    if (threadId === sessionId) return;
+
+    setSessionId(threadId);
+
+    // Fetch memories and messages for selected thread
     if (user) {
       const { data: sessionRow } = await (supabase
         .from("sessions") as any)
@@ -279,6 +323,8 @@ const Index = () => {
           })),
         );
       }
+
+      await loadMessagesForSession(threadId, user);
     }
 
     toast({
@@ -1059,13 +1105,6 @@ const Index = () => {
     }
   };
 
-  useEffect(() => {
-    if (!sessionId) return;
-    setThreadMessagesMap((prev) => ({
-      ...prev,
-      [sessionId]: messages,
-    }));
-  }, [sessionId, messages]);
 
   const askAssistant = async (
     conversation: { role: "user" | "assistant"; content: string }[],
@@ -1107,6 +1146,19 @@ const Index = () => {
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+
+      try {
+        if (user && sessionId) {
+          await supabase.from("messages").insert({
+            user_id: user.id,
+            session_id: sessionId,
+            role: "assistant",
+            content: data.content,
+          });
+        }
+      } catch (dbError) {
+        console.error("Failed to store assistant message", dbError);
+      }
     } catch (error) {
       console.error("chat function exception", error);
       toast({
@@ -1136,6 +1188,19 @@ const Index = () => {
 
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
+
+    try {
+      if (user && sessionId) {
+        await supabase.from("messages").insert({
+          user_id: user.id,
+          session_id: sessionId,
+          role: "user",
+          content: trimmed,
+        });
+      }
+    } catch (error) {
+      console.error("Failed to store user message", error);
+    }
 
     if (isFirstUserMessage && user && sessionId) {
       setThreadTitle(trimmed);
