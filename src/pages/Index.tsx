@@ -40,7 +40,6 @@ const Index = () => {
   const [input, setInput] = useState("");
   const [isClassifying, setIsClassifying] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
-  const [pendingMemory, setPendingMemory] = useState<PreferenceClassification | null>(null);
 
   useEffect(() => {
     const initSession = async () => {
@@ -58,6 +57,54 @@ const Index = () => {
     };
     initSession();
   }, []);
+
+  const persistMemory = async (
+    classification: PreferenceClassification,
+    verification: VerificationResult,
+    userMessage: string
+  ) => {
+    if (!sessionId) {
+      toast({
+        title: "Cannot save memory",
+        description: "No active session",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Use adjusted type if provided, otherwise use original (but only if it's a valid memory type)
+    const finalType: MemoryType = 
+      verification.adjusted_memory_type ?? 
+      (classification.memory_type as MemoryType);
+    
+    const finalSummary = verification.adjusted_summary;
+
+    const { error } = await supabase.from("memories").insert({
+      session_id: sessionId,
+      memory_type: finalType,
+      scope: "global",
+      content: userMessage,
+      short_summary: finalSummary,
+      confidence: classification.confidence,
+      verified: verification.verified,
+      verification_prompt: `Type: ${classification.memory_type}, Summary: ${classification.short_summary}`,
+      verification_response: verification.verification_explanation,
+    });
+
+    if (error) {
+      console.error("Failed to persist memory", error);
+      toast({
+        title: "Failed to save memory",
+        description: error.message,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Memory saved",
+        description: `Remembered: ${finalSummary}`,
+      });
+    }
+  };
 
   const classifyPreference = async (text: string): Promise<PreferenceClassification | null> => {
     try {
@@ -208,26 +255,50 @@ const Index = () => {
       console.log("Verification result:", verification);
 
       if (verification) {
-        setPendingMemory(classification);
+        const conflictWarning =
+          verification.conflicts_detected.length > 0
+            ? `⚠️ Conflicts: ${verification.conflicts_detected.join(", ")}`
+            : "";
 
-        const conflictWarning = verification.conflicts_detected.length > 0
-          ? `\n\n⚠️ Conflicts detected: ${verification.conflicts_detected.join(", ")}`
-          : "";
+        // Show notification with approve/reject buttons in top-right
+        toastRememberGlobally({
+          title: "Remember this globally?",
+          description: `[${classification.memory_type}] ${verification.adjusted_summary}${conflictWarning ? ` — ${conflictWarning}` : ""}`,
+          duration: 15000,
+          action: (
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  persistMemory(classification, verification, trimmed);
+                }}
+                className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                Yes
+              </button>
+              <button
+                onClick={() => {
+                  toast({
+                    title: "Memory not saved",
+                    description: "You chose not to remember this.",
+                  });
+                }}
+                className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
+              >
+                No
+              </button>
+            </div>
+          ),
+        });
 
+        // Show brief assistant response without the approval question
         const assistantMessage: ChatMessage = {
           id: nextId + 1,
           role: "assistant",
-          content: `Memory classified as: **${classification.memory_type}** (confidence: ${classification.confidence.toFixed(2)})
-Summary: "${verification.adjusted_summary}"
-Verification: ${verification.verification_explanation}
-Reason: ${classification.reason}${conflictWarning}
-
-Would you like to remember this globally?`,
+          content: `Classified as **${classification.memory_type}** (confidence: ${classification.confidence.toFixed(2)})
+Verification: ${verification.verification_explanation}${conflictWarning ? `\n${conflictWarning}` : ""}`,
         };
 
         setMessages((prev) => [...prev, assistantMessage]);
-
-        toastRememberGlobally();
       }
     } else {
       // Not a global candidate - show why it's not remembrance-worthy
