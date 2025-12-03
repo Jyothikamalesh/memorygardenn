@@ -41,7 +41,7 @@ serve(async (req) => {
     }
 
     const body: any = {
-      model: "google/gemini-2.5-flash-lite",
+      model: "google/gemini-2.5-flash",
       messages: [
         {
           role: "system",
@@ -156,7 +156,18 @@ serve(async (req) => {
       });
     }
 
-    const json = await response.json();
+    const raw = await response.text();
+
+    let json: any;
+    try {
+      json = JSON.parse(raw);
+    } catch (parseError) {
+      console.error("Failed to parse AI JSON response:", parseError, "Raw response:", raw);
+      return new Response(JSON.stringify({ error: "AI response parse error" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     let parsed: PreferenceClassification | null = null;
     try {
@@ -169,7 +180,7 @@ serve(async (req) => {
         parsed = args as PreferenceClassification;
       }
     } catch (error) {
-      console.error("Failed to parse tool output:", error);
+      console.error("Failed to parse tool output:", error, "Full JSON:", json);
     }
 
     if (!parsed) {
