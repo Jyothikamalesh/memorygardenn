@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast, toastRememberGlobally } from "@/components/ui/use-toast";
@@ -10,16 +10,26 @@ interface ChatMessage {
   content: string;
 }
 
+type MemoryType = "preference" | "goal" | "health" | "biographical_fact" | "routine" | "procedural_memory" | "relationship";
+
 interface PreferenceClassification {
-  classification: "preference" | "personal_fact" | "ephemeral" | "irrelevant";
-  is_preference: boolean;
-  is_personal_fact: boolean;
+  memory_type: MemoryType | "ephemeral" | "irrelevant";
   is_global_candidate: boolean;
   short_summary: string;
   reason: string;
+  confidence: number;
+}
+
+interface VerificationResult {
+  verified: boolean;
+  adjusted_memory_type: MemoryType | null;
+  adjusted_summary: string;
+  verification_explanation: string;
+  conflicts_detected: string[];
 }
 
 const Index = () => {
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 1,
@@ -29,6 +39,25 @@ const Index = () => {
   ]);
   const [input, setInput] = useState("");
   const [isClassifying, setIsClassifying] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [pendingMemory, setPendingMemory] = useState<PreferenceClassification | null>(null);
+
+  useEffect(() => {
+    const initSession = async () => {
+      const { data, error } = await supabase.from("sessions").insert({}).select().single();
+      if (error) {
+        console.error("Failed to create session", error);
+        toast({
+          title: "Session initialization failed",
+          description: "Could not create a session for memory tracking.",
+          variant: "destructive",
+        });
+      } else {
+        setSessionId(data.id);
+      }
+    };
+    initSession();
+  }, []);
 
   const classifyPreference = async (text: string): Promise<PreferenceClassification | null> => {
     try {
@@ -46,7 +75,7 @@ const Index = () => {
         console.error("preference-classifier error", error);
         const message = (error as any).message ?? "Failed to classify preference";
         toast({
-          title: "Preference classification failed",
+          title: "Classification failed",
           description: message,
           variant: "destructive",
         });
@@ -54,10 +83,9 @@ const Index = () => {
       }
 
       if (data && "error" in data && typeof data.error === "string") {
-        const statusError = data.error;
         toast({
-          title: "Preference classification issue",
-          description: statusError,
+          title: "Classification issue",
+          description: data.error,
           variant: "destructive",
         });
         return null;
@@ -68,8 +96,57 @@ const Index = () => {
       console.error("preference-classifier exception", error);
       setIsClassifying(false);
       toast({
-        title: "Preference classification failed",
+        title: "Classification failed",
         description: "Something went wrong while talking to the AI backend.",
+        variant: "destructive",
+      });
+      return null;
+    }
+  };
+
+  const verifyMemory = async (
+    classification: PreferenceClassification,
+    existingMemories: Array<{ memory_type: MemoryType; short_summary: string }>,
+  ): Promise<VerificationResult | null> => {
+    try {
+      setIsVerifying(true);
+      const { data, error } = await supabase.functions.invoke<VerificationResult | { error: string }>("memory-verifier", {
+        body: {
+          memory_type: classification.memory_type,
+          short_summary: classification.short_summary,
+          existing_memories: existingMemories,
+        },
+      });
+
+      setIsVerifying(false);
+
+      if (error) {
+        console.error("memory-verifier error", error);
+        const message = (error as any).message ?? "Failed to verify memory";
+        toast({
+          title: "Verification failed",
+          description: message,
+          variant: "destructive",
+        });
+        return null;
+      }
+
+      if (data && "error" in data && typeof data.error === "string") {
+        toast({
+          title: "Verification issue",
+          description: data.error,
+          variant: "destructive",
+        });
+        return null;
+      }
+
+      return data as VerificationResult;
+    } catch (error) {
+      console.error("memory-verifier exception", error);
+      setIsVerifying(false);
+      toast({
+        title: "Verification failed",
+        description: "Something went wrong while verifying the memory.",
         variant: "destructive",
       });
       return null;
@@ -79,7 +156,7 @@ const Index = () => {
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     const trimmed = input.trim();
-    if (!trimmed || isClassifying) return;
+    if (!trimmed || isClassifying || isVerifying || !sessionId) return;
 
     const nextId = messages.length ? messages[messages.length - 1]!.id + 1 : 1;
 
@@ -94,15 +171,53 @@ const Index = () => {
 
     const classification = await classifyPreference(trimmed);
 
-    if (classification?.is_global_candidate) {
-      toastRememberGlobally();
-    }
+    if (!classification) return;
 
-    if (classification) {
+    if (classification.is_global_candidate && classification.memory_type !== "ephemeral" && classification.memory_type !== "irrelevant") {
+      // Fetch existing global memories for conflict detection
+      const { data: existingMemories, error: fetchError } = await supabase
+        .from("memories")
+        .select("memory_type, short_summary")
+        .eq("scope", "global");
+
+      if (fetchError) {
+        console.error("Failed to fetch existing memories", fetchError);
+      }
+
+      const existing = (existingMemories ?? []) as Array<{ memory_type: MemoryType; short_summary: string }>;
+
+      const verification = await verifyMemory(classification, existing);
+
+      if (verification) {
+        setPendingMemory(classification);
+
+        const conflictWarning = verification.conflicts_detected.length > 0
+          ? `\n\n⚠️ Conflicts detected: ${verification.conflicts_detected.join(", ")}`
+          : "";
+
+        const assistantMessage: ChatMessage = {
+          id: nextId + 1,
+          role: "assistant",
+          content: `Memory classified as: **${classification.memory_type}** (confidence: ${classification.confidence.toFixed(2)})
+Summary: "${verification.adjusted_summary}"
+Verification: ${verification.verification_explanation}
+Reason: ${classification.reason}${conflictWarning}
+
+Would you like to remember this globally?`,
+        };
+
+        setMessages((prev) => [...prev, assistantMessage]);
+
+        toastRememberGlobally();
+      }
+    } else {
       const assistantMessage: ChatMessage = {
         id: nextId + 1,
         role: "assistant",
-        content: `Classification: ${classification.classification}.\nSummary: ${classification.short_summary}.\nReason: ${classification.reason}`,
+        content: `Classification: ${classification.memory_type} (confidence: ${classification.confidence.toFixed(2)}).
+Summary: ${classification.short_summary}.
+Reason: ${classification.reason}
+${classification.is_global_candidate ? "" : "(Not a global candidate — ephemeral or irrelevant.)"}`,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
@@ -117,9 +232,16 @@ const Index = () => {
             <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Prototype</p>
             <h1 className="text-lg font-semibold leading-tight">AI Chat with Global Memory</h1>
           </div>
-          <span className="rounded-full border border-border/60 px-3 py-1 text-xs text-muted-foreground">
-            Minimal brutalist UI · Lovable AI (cheapest model) for prefs
-          </span>
+          <div className="flex flex-col items-end gap-1">
+            <span className="rounded-full border border-border/60 px-3 py-1 text-[10px] text-muted-foreground">
+              Minimal brutalist · Lovable AI (cheapest)
+            </span>
+            {sessionId && (
+              <span className="text-[9px] text-muted-foreground/60">
+                Session: {sessionId.slice(0, 8)}
+              </span>
+            )}
+          </div>
         </div>
       </header>
 
@@ -132,12 +254,14 @@ const Index = () => {
             <div>
               <h2 className="text-sm font-medium">Conversation</h2>
               <p className="text-xs text-muted-foreground">
-                Tell me about your preferences or long-term facts. I&apos;ll classify them and ask to remember good global
-                candidates.
+                Memory types: Preference, Goal, Health, Biographical Fact, Routine, Procedural Memory, Relationship. LLM verifies & detects conflicts.
               </p>
             </div>
-            {isClassifying && (
-              <span className="text-[11px] text-muted-foreground">Classifying preference with Lovable AI…</span>
+            {(isClassifying || isVerifying) && (
+              <span className="text-[11px] text-muted-foreground">
+                {isClassifying && "Classifying…"}
+                {isVerifying && "Verifying…"}
+              </span>
             )}
           </div>
 
@@ -169,17 +293,17 @@ const Index = () => {
             </label>
             <Textarea
               id="chat-input"
-              placeholder="For example: I prefer dark mode and short answers."
+              placeholder="For example: I love minimalist design and dark mode."
               value={input}
               onChange={(event) => setInput(event.target.value)}
               className="min-h-[80px] resize-none bg-background/80"
             />
             <div className="flex items-center justify-between gap-3">
               <p className="text-[11px] text-muted-foreground">
-                Uses Lovable AI with the cheapest model for preference classification. Global storage comes next.
+                Classification → Verification → Conflict detection. Session-based temporal graph for memory management.
               </p>
-              <Button type="submit" size="sm" disabled={!input.trim() || isClassifying}>
-                {isClassifying ? "Classifying…" : "Send"}
+              <Button type="submit" size="sm" disabled={!input.trim() || isClassifying || isVerifying || !sessionId}>
+                {isClassifying ? "Classifying…" : isVerifying ? "Verifying…" : "Send"}
               </Button>
             </div>
           </form>

@@ -2,3 +2,6 @@ project_id = "nhbkywokqgdsbtdkaumz"
 
 [functions.preference-classifier]
 verify_jwt = false
+
+[functions.memory-verifier]
+verify_jwt = false
