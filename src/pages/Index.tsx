@@ -288,10 +288,15 @@ const Index = () => {
     } catch (error) {
       console.error("memory-verifier exception", error);
       setIsVerifying(false);
+
+      const message =
+        error instanceof Error && error.message.includes("timed out")
+          ? "Verifier took too long. Classification is still attached, but conflicts were not checked."
+          : "Something went wrong while verifying the memory. Classification is still attached.";
+
       toast({
-        title: "Verification failed",
-        description: "Something went wrong while verifying the memory.",
-        variant: "destructive",
+        title: "Verification skipped",
+        description: message,
       });
       return null;
     }
@@ -370,6 +375,89 @@ const Index = () => {
               <button
                 onClick={() => {
                   persistMemory(classification, verification, userText);
+                }}
+                className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                Yes
+              </button>
+              <button
+                onClick={() => {
+                  toast({
+                    title: "Memory not saved",
+                    description: "You chose not to remember this.",
+                  });
+                }}
+                className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
+              >
+                No
+              </button>
+            </div>
+          ),
+        });
+      } else {
+        attachMeta({
+          classification,
+          verification: null,
+          memoryScope: "global",
+        });
+
+        toastRememberGlobally({
+          title: "Remember this globally?",
+          description: `[${classification.memory_type}] ${classification.short_summary}`,
+          duration: 15000,
+          action: (
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  if (!sessionId) {
+                    toast({
+                      title: "Cannot save memory",
+                      description: "No active session",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+
+                  const { data, error } = await supabase
+                    .from("memories")
+                    .insert({
+                      session_id: sessionId,
+                      memory_type: classification.memory_type as MemoryType,
+                      scope: "global",
+                      content: userText,
+                      short_summary: classification.short_summary,
+                      confidence: classification.confidence,
+                      verified: false,
+                      verification_prompt: null,
+                      verification_response: null,
+                    })
+                    .select()
+                    .single();
+
+                  if (error) {
+                    console.error("Failed to save global memory (unverified)", error);
+                    toast({
+                      title: "Failed to save memory",
+                      description: error.message,
+                      variant: "destructive",
+                    });
+                  } else if (data) {
+                    setGlobalMemories((prev) => [
+                      ...prev,
+                      {
+                        id: data.id,
+                        memory_type: data.memory_type as MemoryType,
+                        short_summary: data.short_summary,
+                        scope: data.scope,
+                        confidence: data.confidence,
+                      },
+                    ]);
+
+                    toast({
+                      title: "Memory saved",
+                      description: `Remembered: ${classification.short_summary}`,
+                    });
+                  }
                 }}
                 className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
               >
